@@ -62,8 +62,11 @@ https://github.com/jinfive/ringdu-server
 작업 규칙:
 
 * `main`에는 직접 커밋하지 않는다.
+* 모든 작업은 먼저 GitHub Issue를 생성하고, 해당 이슈 범위의 브랜치에서 진행한다.
 * 기능 작업은 `develop`에서 기능 브랜치를 생성해 진행한다.
 * PR 대상은 기본적으로 `develop`이다.
+* 작업 완료 시 기능 브랜치를 원격에 push하고 PR을 생성한다.
+* PR이 merge되면 해당 기능 브랜치는 로컬과 원격에서 삭제한다.
 * 커밋 메시지는 Conventional Commit 스타일을 사용한다.
 
 커밋 메시지 예시:
@@ -639,5 +642,4 @@ TEACHER = 선생님
 PARENT  = 학부모
 STUDENT = 학생
 ````
-
 
