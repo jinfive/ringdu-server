@@ -1,13 +1,13 @@
 services:
   postgres:
     image: postgres:16
-    container_name: myproject-postgres
+    container_name: ringdu-postgres
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: ringdu
+      POSTGRES_USER: ringdu
+      POSTGRES_PASSWORD: ringdu1234
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
