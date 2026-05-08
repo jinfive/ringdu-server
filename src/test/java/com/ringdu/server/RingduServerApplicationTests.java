@@ -1,4 +1,4 @@
-package com.ringdu.ringduserver;
+package com.ringdu.server;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,5 +11,4 @@ class RingduServerApplicationTests {
     @Test
     void contextLoads() {
     }
-
 }
