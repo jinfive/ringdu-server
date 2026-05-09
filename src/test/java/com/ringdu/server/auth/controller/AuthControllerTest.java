@@ -105,6 +105,36 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("로그아웃은 인증 헤더 없이 refreshToken Cookie만으로 성공하고 Cookie를 만료한다")
+    void logoutSuccessWithoutAuthorizationHeader() throws Exception {
+        saveUser("controller-logout@ringdu.com");
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(
+                                "controller-logout@ringdu.com",
+                                "password123"
+                        ))))
+                .andReturn();
+        Cookie refreshTokenCookie = loginResult.getResponse()
+                .getCookie(RefreshTokenCookieProvider.REFRESH_TOKEN_COOKIE_NAME);
+
+        mockMvc.perform(post("/api/auth/logout").cookie(refreshTokenCookie))
+                .andExpect(status().isOk())
+                .andExpect(cookie().maxAge(RefreshTokenCookieProvider.REFRESH_TOKEN_COOKIE_NAME, 0));
+
+        mockMvc.perform(post("/api/auth/refresh").cookie(refreshTokenCookie))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("refreshToken Cookie가 없어도 로그아웃은 Cookie 만료 응답을 반환한다")
+    void logoutSuccessWithoutRefreshTokenCookie() throws Exception {
+        mockMvc.perform(post("/api/auth/logout"))
+                .andExpect(status().isOk())
+                .andExpect(cookie().maxAge(RefreshTokenCookieProvider.REFRESH_TOKEN_COOKIE_NAME, 0));
+    }
+
+    @Test
     @DisplayName("내 정보 조회는 인증 없이 실패한다")
     void meFailsWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
