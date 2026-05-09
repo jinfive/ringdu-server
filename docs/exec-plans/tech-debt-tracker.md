@@ -368,6 +368,7 @@ Ringdu는 실제 운영을 고려하므로 다음 영역의 기술부채는 우�
 * JWT secret 하드코딩
 * Access Token 장기 유효기간
 * Refresh Token 원문 저장
+* Refresh Token Redis key에 TTL 누락
 * 인증 실패와 권한 실패 구분 부족
 * 로그에 토큰 출력
 

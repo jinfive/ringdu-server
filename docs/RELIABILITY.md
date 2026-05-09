@@ -582,7 +582,8 @@ Redis는 Refresh Token 상태 저장소로 사용할 수 있다.
 - Redis 장애 시 인증 흐름이 어떻게 실패할지 정의한다.
 - Refresh Token 원문은 Redis에 저장하지 않는다.
 - tokenHash만 저장한다.
-- TTL을 명확히 설정한다.
+- 활성 Refresh Token은 `refresh:{tokenHash}` 키에 저장하고 Refresh Token 만료 시간과 동일한 TTL을 설정한다.
+- 사용된 Refresh Token은 `used-refresh:{oldTokenHash}` 키에 저장하고 남은 만료 시간 또는 설정 TTL을 적용한다.
 - 만료된 토큰 상태가 오래 남지 않도록 한다.
 - Refresh Token Rotation과 재사용 감지 흐름을 명확히 한다.
 - Redis key 구조를 문서화한다.
@@ -598,6 +599,7 @@ used-refresh:{oldTokenHash}
 
 - Access Token은 Redis에 저장하지 않는다.
 - Refresh Token 원문을 로그에 남기지 않는다.
+- tokenHash와 Cookie 원문도 로그에 남기지 않는다.
 - Redis 장애를 무시하고 인증을 통과시키면 안 된다.
 
 ---
@@ -786,4 +788,3 @@ AI 에이전트가 안정성과 관련된 코드를 수정할 때는 다음을 �
 - 민감정보는 로그에 남기지 않는다.
 - 배포 전후 검증과 롤백 방법을 고려한다.
 - 임시 해결은 기술부채로 기록한다.
-

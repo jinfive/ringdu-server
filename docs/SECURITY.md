@@ -333,11 +333,13 @@ Refresh Token은 Access Token을 재발급하기 위한 민감한 값이다.
 - Refresh Token 원문은 DB에 저장하지 않는다.
 - Refresh Token 원문은 Redis에 저장하지 않는다.
 - Refresh Token은 SHA-256 등으로 해시한 tokenHash만 저장한다.
+- 활성 Refresh Token은 Redis TTL로 만료를 관리한다.
 - Refresh Token Rotation을 적용한다.
 - refresh 요청마다 기존 Refresh Token을 폐기하고 새 Refresh Token을 발급한다.
-- 사용된 Refresh Token이 다시 들어오면 재사용 공격으로 보고 처리한다.
+- 사용된 Refresh Token은 `used-refresh:{oldTokenHash}`로 남은 만료 시간 또는 설정 TTL 동안 보관한다.
+- 사용된 Refresh Token이 다시 들어오면 재사용 공격으로 보고 해당 사용자의 활성 Refresh Token을 정리한다.
 - 로그아웃 시 Refresh Token을 폐기한다.
-- Refresh Token 값을 로그에 남기지 않는다.
+- Refresh Token 값, tokenHash, Authorization Header, Cookie 원문을 로그에 남기지 않는다.
 
 Redis key 예시:
 
@@ -345,6 +347,8 @@ Redis key 예시:
 refresh:{tokenHash}
 used-refresh:{oldTokenHash}
 ```
+
+저장값은 현재 `userId`만 사용한다. Access Token은 Redis나 DB에 저장하지 않고 JWT 검증만 수행한다.
 
 주의:
 

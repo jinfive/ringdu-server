@@ -901,30 +901,28 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 Refresh Token은 DB 테이블에 원문으로 저장하지 않는다.
 
-Ringdu 인증 구조에서는 Refresh Token 상태 관리를 Redis에 저장하는 방향을 사용한다.
+Ringdu 인증 구조에서는 Refresh Token 상태 관리를 Redis TTL 기반 key로 처리한다.
 
 기본 원칙:
 
 - Refresh Token 원문 저장 금지
 - SHA-256 등으로 해시한 `tokenHash`만 저장
+- 활성 Refresh Token key에는 Refresh Token 만료 시간과 동일한 TTL 설정
+- 사용된 Refresh Token key에는 남은 만료 시간 또는 설정 TTL 적용
 - Refresh Token Rotation 적용
 - 재사용 감지를 위해 사용된 토큰 해시를 일정 시간 보관
 
-예상 key 구조:
+현재 key 구조:
 
 ```txt
 refresh:{tokenHash}
 used-refresh:{oldTokenHash}
 ```
 
-예상 저장값:
+현재 저장값:
 
 ```txt
 userId
-expiresAt
-createdAt
-userAgent
-ipAddress
 ```
 
 주의:
@@ -932,6 +930,7 @@ ipAddress
 - Redis 저장 구조는 관계형 DB 스키마가 아니다.
 - `refresh_tokens` 테이블을 별도로 만들지 않는다.
 - Access Token은 DB에도 Redis에도 저장하지 않는다.
+- Refresh Token 원문, tokenHash, Cookie 원문은 로그에 남기지 않는다.
 - 운영 환경에서는 Redis 장애 상황도 고려해야 한다.
 
 ---
@@ -1271,4 +1270,3 @@ DB 스키마를 변경하거나 검토할 때 다음 문서를 함께 확인한�
 - DB 변경은 코드, API, 보안, 안정성에 영향을 줄 수 있다.
 - 운영 데이터에 영향을 주는 변경은 신중하게 계획한다.
 - 스키마 변경 후 문서를 갱신한다.
-

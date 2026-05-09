@@ -10,6 +10,7 @@ import com.ringdu.server.global.exception.ErrorCode;
 import com.ringdu.server.user.entity.AuthProvider;
 import com.ringdu.server.user.entity.Role;
 import com.ringdu.server.user.entity.User;
+import com.ringdu.server.user.entity.UserStatus;
 import com.ringdu.server.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -118,6 +119,77 @@ class AuthServiceTest {
         User user = userRepository.findByEmail("provider-id@ringdu.com").orElseThrow();
 
         assertThat(user.getProviderId()).isNull();
+    }
+
+    @Test
+    @DisplayName("로그인 성공 시 accessToken과 refreshToken이 반환된다")
+    void loginSuccess() {
+        authService.signup(signupRequest("login@ringdu.com", Role.STUDENT));
+
+        var result = authService.login(new com.ringdu.server.auth.dto.LoginRequest("login@ringdu.com", "password123"));
+
+        assertThat(result.loginResponse().accessToken()).isNotBlank();
+        assertThat(result.refreshToken()).isNotBlank();
+        assertThat(result.loginResponse().tokenType()).isEqualTo("Bearer");
+    }
+
+    @Test
+    @DisplayName("이메일이 없으면 로그인 예외가 발생한다")
+    void throwExceptionWhenLoginEmailNotFound() {
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("none@ringdu.com", "password123")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("비밀번호가 틀리면 로그인 예외가 발생한다")
+    void throwExceptionWhenPasswordInvalid() {
+        authService.signup(signupRequest("invalid-password@ringdu.com", Role.TEACHER));
+
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("invalid-password@ringdu.com", "wrong-password")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_PASSWORD);
+    }
+
+    @Test
+    @DisplayName("비활성화 계정은 로그인할 수 없다")
+    void throwExceptionWhenInactiveUserLogin() {
+        User user = User.createLocalUser(
+                "inactive@ringdu.com",
+                passwordEncoder.encode("password123"),
+                "홍길동",
+                "010-1234-5678",
+                Role.PARENT
+        );
+        user.deactivate();
+        userRepository.save(user);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.INACTIVE);
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("inactive@ringdu.com", "password123")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INACTIVE_USER);
+    }
+
+    @Test
+    @DisplayName("소셜 provider 계정은 일반 로그인할 수 없다")
+    void throwExceptionWhenSocialUserLocalLogin() {
+        User user = User.createSocialUser(
+                "social@ringdu.com",
+                "홍길동",
+                "010-1234-5678",
+                Role.STUDENT,
+                AuthProvider.KAKAO,
+                "kakao-1"
+        );
+        userRepository.save(user);
+
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("social@ringdu.com", "password123")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.LOCAL_LOGIN_NOT_ALLOWED);
     }
 
     private void assertSignupRoleNotAllowed(Role role) {

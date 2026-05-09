@@ -603,6 +603,7 @@ Access Token
 Refresh Token
 → HttpOnly Cookie
 → Redis에 tokenHash 저장
+→ Redis TTL로 만료 관리
 → 원문 저장 금지
 → Rotation 적용
 ```
@@ -610,8 +611,9 @@ Refresh Token
 원칙:
 
 * Access Token은 DB에 저장하지 않는다.
+* Access Token은 Redis에도 저장하지 않는다.
 * Refresh Token 원문은 DB나 Redis에 저장하지 않는다.
-* Redis에는 Refresh Token의 해시값만 저장한다.
+* Redis에는 `refresh:{tokenHash}`와 `used-refresh:{oldTokenHash}` key를 사용하고 값은 현재 `userId`만 저장한다.
 * Refresh Token은 HttpOnly Cookie로 관리한다.
 * 운영 환경에서는 Cookie에 `Secure=true`를 적용한다.
 * JWT secret은 코드에 하드코딩하지 않는다.
@@ -891,5 +893,4 @@ Ringdu는 실제 운영을 고려하는 프로젝트다.
 * 기능 변경 시 테스트를 함께 고려한다.
 * 보안 관련 코드는 특히 신중하게 수정한다.
 * 문서와 코드가 충돌하면 코드 기준으로 확인하고 문서를 갱신한다.
-
 
