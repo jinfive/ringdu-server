@@ -3,7 +3,9 @@ package com.ringdu.server.auth.controller;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,6 +50,18 @@ class AuthControllerTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Test
+    @DisplayName("로컬 프론트 origin의 로그인 preflight 요청은 CORS 헤더와 함께 허용된다")
+    void loginPreflightAllowedFromLocalFrontend() throws Exception {
+        mockMvc.perform(options("/api/auth/login")
+                        .header("Origin", "http://localhost:3002")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3002"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
 
     @Test
     @DisplayName("로그인 성공 시 accessToken과 refreshToken Cookie가 반환된다")
