@@ -30,18 +30,21 @@ AGENTS.md는 전체 매뉴얼이 아니다.
 
 | 목적 | 문서 |
 |---|---|
-| 설계 원칙 | [DESIGN.md](DESIGN.md) |
-| 보안/인증/인가 | [SECURITY.md](SECURITY.md) |
-| 안정성/운영 기준 | [RELIABILITY.md](RELIABILITY.md) |
-| 품질 기준 | [QUALITY_SCORE.md](QUALITY_SCORE.md) |
-| 실행 계획 작성법 | [PLANS.md](PLANS.md) |
-| 작업 흐름 | [WORKFLOW.md](WORKFLOW.md) |
-| 제품 스펙 색인 | [product-specs/index.md](product-specs/index.md) |
-| 설계 문서 색인 | [design-docs/index.md](design-docs/index.md) |
-| 활성 실행 계획 | [exec-plans/active/](exec-plans/active/) |
-| 완료된 실행 계획 | [exec-plans/completed/](exec-plans/completed/) |
-| 기술부채 추적 | [exec-plans/tech-debt-tracker.md](exec-plans/tech-debt-tracker.md) |
-| 생성된 DB 스키마 | [generated/db-schema.md](generated/db-schema.md) |
+| 전체 아키텍처 | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 설계 원칙 | [docs/DESIGN.md](docs/DESIGN.md) |
+| 프론트엔드 기준 | [docs/FRONTEND.md](docs/FRONTEND.md) |
+| 보안/인증/인가 | [docs/SECURITY.md](docs/SECURITY.md) |
+| 안정성/운영 기준 | [docs/RELIABILITY.md](docs/RELIABILITY.md) |
+| 품질 기준 | [docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md) |
+| 실행 계획 작성법 | [docs/PLANS.md](docs/PLANS.md) |
+| 제품 감각/기획 기준 | [docs/PRODUCT_SENSE.md](docs/PRODUCT_SENSE.md) |
+| 제품 스펙 색인 | [docs/product-specs/index.md](docs/product-specs/index.md) |
+| 설계 문서 색인 | [docs/design-docs/index.md](docs/design-docs/index.md) |
+| 활성 실행 계획 | [docs/exec-plans/active/](docs/exec-plans/active/) |
+| 완료된 실행 계획 | [docs/exec-plans/completed/](docs/exec-plans/completed/) |
+| 기술부채 추적 | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
+| 생성된 DB 스키마 | [docs/generated/db-schema.md](docs/generated/db-schema.md) |
+| 외부 참고 자료 | [docs/references/](docs/references/) |
 
 ---
 
@@ -49,20 +52,33 @@ AGENTS.md는 전체 매뉴얼이 아니다.
 
 ```txt
 AGENTS.md
-DESIGN.md
-PLANS.md
-QUALITY_SCORE.md
-RELIABILITY.md
-SECURITY.md
-WORKFLOW.md
-design-docs/
-└── index.md
-exec-plans/
-├── active/
-├── completed/
-└── tech-debt-tracker.md
-generated/
-└── db-schema.md
-product-specs/
-└── index.md
-```
+ARCHITECTURE.md
+docs/
+├── design-docs/
+│   ├── index.md
+│   ├── core-beliefs.md
+│   └── ...
+├── exec-plans/
+│   ├── active/
+│   ├── completed/
+│   └── tech-debt-tracker.md
+├── generated/
+│   └── db-schema.md
+├── product-specs/
+│   ├── index.md
+│   ├── auth.md
+│   ├── onboarding.md
+│   ├── user-roles.md
+│   └── ...
+├── references/
+│   ├── framework-reference-llms.txt
+│   ├── database-reference-llms.txt
+│   ├── deployment-reference-llms.txt
+│   └── ...
+├── DESIGN.md
+├── FRONTEND.md
+├── PLANS.md
+├── PRODUCT_SENSE.md
+├── QUALITY_SCORE.md
+├── RELIABILITY.md
+└── SECURITY.md
