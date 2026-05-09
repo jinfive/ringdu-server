@@ -73,6 +73,36 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("같은 이메일과 같은 비밀번호로 다시 가입해도 실패한다")
+    void throwExceptionWhenSameEmailAndSamePasswordSignupAgain() {
+        authService.signup(signupRequest("same-password@ringdu.com", "password123", Role.TEACHER));
+
+        assertThatThrownBy(() -> authService.signup(signupRequest(
+                "same-password@ringdu.com",
+                "password123",
+                Role.STUDENT
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
+    }
+
+    @Test
+    @DisplayName("같은 이메일과 다른 비밀번호로 다시 가입해도 실패한다")
+    void throwExceptionWhenSameEmailAndDifferentPasswordSignupAgain() {
+        authService.signup(signupRequest("different-password@ringdu.com", "password123", Role.PARENT));
+
+        assertThatThrownBy(() -> authService.signup(signupRequest(
+                "different-password@ringdu.com",
+                "different123",
+                Role.STUDENT
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
+    }
+
+    @Test
     @DisplayName("ADMIN 권한은 일반 회원가입으로 생성할 수 없다")
     void throwExceptionWhenAdminSignup() {
         assertSignupRoleNotAllowed(Role.ADMIN);
@@ -99,6 +129,17 @@ class AuthServiceTest {
 
         assertThat(user.getPassword()).isNotEqualTo("password123");
         assertThat(passwordEncoder.matches("password123", user.getPassword())).isTrue();
+    }
+
+    @Test
+    @DisplayName("비밀번호 원문은 DB에 저장되지 않는다")
+    void doNotSaveRawPassword() {
+        authService.signup(signupRequest("raw-password@ringdu.com", "password123", Role.STUDENT));
+
+        User user = userRepository.findByEmail("raw-password@ringdu.com").orElseThrow();
+
+        assertThat(user.getPassword()).isNotEqualTo("password123");
+        assertThat(user.getPassword()).doesNotContain("password123");
     }
 
     @Test
@@ -200,9 +241,13 @@ class AuthServiceTest {
     }
 
     private SignupRequest signupRequest(String email, Role role) {
+        return signupRequest(email, "password123", role);
+    }
+
+    private SignupRequest signupRequest(String email, String password, Role role) {
         return new SignupRequest(
                 email,
-                "password123",
+                password,
                 "홍길동",
                 "010-1234-5678",
                 role
