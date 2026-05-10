@@ -1,11 +1,21 @@
 package com.ringdu.server.auth.service;
 
+import com.ringdu.server.auth.dto.LoginRequest;
+import com.ringdu.server.auth.dto.LoginResponse;
+import com.ringdu.server.auth.dto.LoginResult;
+import com.ringdu.server.auth.dto.MeResponse;
+import com.ringdu.server.auth.dto.RefreshTokenIssue;
 import com.ringdu.server.auth.dto.SignupRequest;
 import com.ringdu.server.auth.dto.SignupResponse;
+import com.ringdu.server.auth.dto.TokenRefreshResponse;
+import com.ringdu.server.auth.dto.TokenRefreshResult;
 import com.ringdu.server.global.exception.BusinessException;
 import com.ringdu.server.global.exception.ErrorCode;
+import com.ringdu.server.global.security.jwt.JwtTokenProvider;
+import com.ringdu.server.user.entity.AuthProvider;
 import com.ringdu.server.user.entity.Role;
 import com.ringdu.server.user.entity.User;
+import com.ringdu.server.user.entity.UserStatus;
 import com.ringdu.server.user.repository.UserRepository;
 import java.util.EnumSet;
 import java.util.Set;
@@ -26,6 +36,8 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final RefreshTokenService refreshTokenService;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -45,6 +57,44 @@ public class AuthService {
         return SignupResponse.from(savedUser);
     }
 
+    @Transactional
+    public LoginResult login(LoginRequest request) {
+        User user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        validateLoginUser(user);
+        validatePassword(request.password(), user.getPassword());
+
+        String accessToken = jwtTokenProvider.createAccessToken(user);
+        RefreshTokenIssue refreshTokenIssue = refreshTokenService.createRefreshToken(user);
+
+        return new LoginResult(LoginResponse.of(accessToken, user), refreshTokenIssue.refreshToken());
+    }
+
+    @Transactional
+    public TokenRefreshResult refresh(String refreshToken) {
+        var rotation = refreshTokenService.rotateRefreshToken(refreshToken);
+        Long userId = rotation.userId();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        validateActiveUser(user);
+
+        String accessToken = jwtTokenProvider.createAccessToken(user);
+
+        return new TokenRefreshResult(TokenRefreshResponse.of(accessToken), rotation.refreshToken());
+    }
+
+    @Transactional
+    public void logout(String refreshToken) {
+        refreshTokenService.revokeRefreshToken(refreshToken);
+    }
+
+    @Transactional(readOnly = true)
+    public MeResponse getMe(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        return MeResponse.from(user);
+    }
+
     private void validateDuplicatedEmail(String email) {
         if (userRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.DUPLICATED_EMAIL);
@@ -54,6 +104,26 @@ public class AuthService {
     private void validateSignupRole(Role role) {
         if (!LOCAL_SIGNUP_ROLES.contains(role)) {
             throw new BusinessException(ErrorCode.SIGNUP_ROLE_NOT_ALLOWED);
+        }
+    }
+
+    private void validateLoginUser(User user) {
+        validateActiveUser(user);
+
+        if (user.getProvider() != AuthProvider.LOCAL) {
+            throw new BusinessException(ErrorCode.LOCAL_LOGIN_NOT_ALLOWED);
+        }
+    }
+
+    private void validateActiveUser(User user) {
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.INACTIVE_USER);
+        }
+    }
+
+    private void validatePassword(String rawPassword, String encodedPassword) {
+        if (encodedPassword == null || !passwordEncoder.matches(rawPassword, encodedPassword)) {
+            throw new BusinessException(ErrorCode.INVALID_PASSWORD);
         }
     }
 }

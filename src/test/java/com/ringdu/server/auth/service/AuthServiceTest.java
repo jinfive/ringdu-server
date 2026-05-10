@@ -10,6 +10,7 @@ import com.ringdu.server.global.exception.ErrorCode;
 import com.ringdu.server.user.entity.AuthProvider;
 import com.ringdu.server.user.entity.Role;
 import com.ringdu.server.user.entity.User;
+import com.ringdu.server.user.entity.UserStatus;
 import com.ringdu.server.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -72,21 +73,45 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("같은 이메일과 같은 비밀번호로 다시 가입해도 실패한다")
+    void throwExceptionWhenSameEmailAndSamePasswordSignupAgain() {
+        authService.signup(signupRequest("same-password@ringdu.com", "password123", Role.TEACHER));
+
+        assertThatThrownBy(() -> authService.signup(signupRequest(
+                "same-password@ringdu.com",
+                "password123",
+                Role.STUDENT
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
+    }
+
+    @Test
+    @DisplayName("같은 이메일과 다른 비밀번호로 다시 가입해도 실패한다")
+    void throwExceptionWhenSameEmailAndDifferentPasswordSignupAgain() {
+        authService.signup(signupRequest("different-password@ringdu.com", "password123", Role.PARENT));
+
+        assertThatThrownBy(() -> authService.signup(signupRequest(
+                "different-password@ringdu.com",
+                "different123",
+                Role.STUDENT
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
+    }
+
+    @Test
     @DisplayName("ADMIN 권한은 일반 회원가입으로 생성할 수 없다")
     void throwExceptionWhenAdminSignup() {
         assertSignupRoleNotAllowed(Role.ADMIN);
     }
 
     @Test
-    @DisplayName("OWNER 권한은 일반 회원가입으로 생성할 수 없다")
-    void throwExceptionWhenOwnerSignup() {
-        assertSignupRoleNotAllowed(Role.OWNER);
-    }
-
-    @Test
-    @DisplayName("DESK 권한은 일반 회원가입으로 생성할 수 없다")
-    void throwExceptionWhenDeskSignup() {
-        assertSignupRoleNotAllowed(Role.DESK);
+    @DisplayName("ACADEMY 권한은 일반 회원가입으로 생성할 수 없다")
+    void throwExceptionWhenAcademySignup() {
+        assertSignupRoleNotAllowed(Role.ACADEMY);
     }
 
     @Test
@@ -98,6 +123,17 @@ class AuthServiceTest {
 
         assertThat(user.getPassword()).isNotEqualTo("password123");
         assertThat(passwordEncoder.matches("password123", user.getPassword())).isTrue();
+    }
+
+    @Test
+    @DisplayName("비밀번호 원문은 DB에 저장되지 않는다")
+    void doNotSaveRawPassword() {
+        authService.signup(signupRequest("raw-password@ringdu.com", "password123", Role.STUDENT));
+
+        User user = userRepository.findByEmail("raw-password@ringdu.com").orElseThrow();
+
+        assertThat(user.getPassword()).isNotEqualTo("password123");
+        assertThat(user.getPassword()).doesNotContain("password123");
     }
 
     @Test
@@ -120,17 +156,96 @@ class AuthServiceTest {
         assertThat(user.getProviderId()).isNull();
     }
 
+    @Test
+    @DisplayName("로그인 성공 시 accessToken과 refreshToken이 반환된다")
+    void loginSuccess() {
+        authService.signup(signupRequest("login@ringdu.com", Role.STUDENT));
+
+        var result = authService.login(new com.ringdu.server.auth.dto.LoginRequest("login@ringdu.com", "password123"));
+
+        assertThat(result.loginResponse().accessToken()).isNotBlank();
+        assertThat(result.refreshToken()).isNotBlank();
+        assertThat(result.loginResponse().tokenType()).isEqualTo("Bearer");
+        assertThat(result.loginResponse().role()).isEqualTo(Role.STUDENT);
+    }
+
+    @Test
+    @DisplayName("이메일이 없으면 로그인 예외가 발생한다")
+    void throwExceptionWhenLoginEmailNotFound() {
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("none@ringdu.com", "password123")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("비밀번호가 틀리면 로그인 예외가 발생한다")
+    void throwExceptionWhenPasswordInvalid() {
+        authService.signup(signupRequest("invalid-password@ringdu.com", Role.TEACHER));
+
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("invalid-password@ringdu.com", "wrong-password")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_PASSWORD);
+    }
+
+    @Test
+    @DisplayName("비활성화 계정은 로그인할 수 없다")
+    void throwExceptionWhenInactiveUserLogin() {
+        User user = User.createLocalUser(
+                "inactive@ringdu.com",
+                passwordEncoder.encode("password123"),
+                "홍길동",
+                "010-1234-5678",
+                Role.PARENT
+        );
+        user.deactivate();
+        userRepository.save(user);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.INACTIVE);
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("inactive@ringdu.com", "password123")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INACTIVE_USER);
+    }
+
+    @Test
+    @DisplayName("소셜 provider 계정은 일반 로그인할 수 없다")
+    void throwExceptionWhenSocialUserLocalLogin() {
+        User user = User.createSocialUser(
+                "social@ringdu.com",
+                "홍길동",
+                "010-1234-5678",
+                Role.STUDENT,
+                AuthProvider.KAKAO,
+                "kakao-1"
+        );
+        userRepository.save(user);
+
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("social@ringdu.com", "password123")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.LOCAL_LOGIN_NOT_ALLOWED);
+    }
+
     private void assertSignupRoleNotAllowed(Role role) {
-        assertThatThrownBy(() -> authService.signup(signupRequest(role.name().toLowerCase() + "@ringdu.com", role)))
+        assertThatThrownBy(() -> authService.signup(signupRequest(
+                "blocked-" + role.name().toLowerCase() + "@ringdu.com",
+                role
+        )))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SIGNUP_ROLE_NOT_ALLOWED);
     }
 
     private SignupRequest signupRequest(String email, Role role) {
+        return signupRequest(email, "password123", role);
+    }
+
+    private SignupRequest signupRequest(String email, String password, Role role) {
         return new SignupRequest(
                 email,
-                "password123",
+                password,
                 "홍길동",
                 "010-1234-5678",
                 role

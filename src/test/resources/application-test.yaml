@@ -7,3 +7,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+jwt:
+  secret: ringdu-test-secret-key-must-be-long-enough-for-hmac-sha
+  access-token-ttl: 30m
+  refresh-token-ttl: 14d
+  used-refresh-token-ttl: 14d

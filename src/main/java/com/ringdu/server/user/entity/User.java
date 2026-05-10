@@ -84,4 +84,22 @@ public class User extends BaseEntity {
                 null
         );
     }
+
+    public static User createSocialUser(String email, String name, String phone, Role role,
+                                        AuthProvider provider, String providerId) {
+        return new User(
+                email,
+                null,
+                name,
+                phone,
+                role,
+                UserStatus.ACTIVE,
+                provider,
+                providerId
+        );
+    }
+
+    public void deactivate() {
+        this.status = UserStatus.INACTIVE;
+    }
 }
