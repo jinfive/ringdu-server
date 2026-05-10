@@ -77,6 +77,7 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.accessToken").value(notNullValue()))
+                .andExpect(jsonPath("$.data.role").value("STUDENT"))
                 .andExpect(cookie().httpOnly(RefreshTokenCookieProvider.REFRESH_TOKEN_COOKIE_NAME, true))
                 .andExpect(cookie().value(RefreshTokenCookieProvider.REFRESH_TOKEN_COOKIE_NAME, notNullValue()));
     }
@@ -152,7 +153,8 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.email").value("controller-me@ringdu.com"));
+                .andExpect(jsonPath("$.data.email").value("controller-me@ringdu.com"))
+                .andExpect(jsonPath("$.data.role").value("STUDENT"));
     }
 
     private User saveUser(String email) {

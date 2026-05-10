@@ -109,15 +109,9 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("OWNER 권한은 일반 회원가입으로 생성할 수 없다")
-    void throwExceptionWhenOwnerSignup() {
-        assertSignupRoleNotAllowed(Role.OWNER);
-    }
-
-    @Test
-    @DisplayName("DESK 권한은 일반 회원가입으로 생성할 수 없다")
-    void throwExceptionWhenDeskSignup() {
-        assertSignupRoleNotAllowed(Role.DESK);
+    @DisplayName("ACADEMY 권한은 일반 회원가입으로 생성할 수 없다")
+    void throwExceptionWhenAcademySignup() {
+        assertSignupRoleNotAllowed(Role.ACADEMY);
     }
 
     @Test
@@ -172,6 +166,7 @@ class AuthServiceTest {
         assertThat(result.loginResponse().accessToken()).isNotBlank();
         assertThat(result.refreshToken()).isNotBlank();
         assertThat(result.loginResponse().tokenType()).isEqualTo("Bearer");
+        assertThat(result.loginResponse().role()).isEqualTo(Role.STUDENT);
     }
 
     @Test
@@ -234,7 +229,10 @@ class AuthServiceTest {
     }
 
     private void assertSignupRoleNotAllowed(Role role) {
-        assertThatThrownBy(() -> authService.signup(signupRequest(role.name().toLowerCase() + "@ringdu.com", role)))
+        assertThatThrownBy(() -> authService.signup(signupRequest(
+                "blocked-" + role.name().toLowerCase() + "@ringdu.com",
+                role
+        )))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SIGNUP_ROLE_NOT_ALLOWED);

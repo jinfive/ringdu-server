@@ -2,10 +2,9 @@ package com.ringdu.server.user.entity;
 
 public enum Role {
 
-    ADMIN,
-    OWNER,
-    DESK,
+    ACADEMY,
     TEACHER,
+    STUDENT,
     PARENT,
-    STUDENT
+    ADMIN
 }

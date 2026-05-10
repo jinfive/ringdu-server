@@ -77,7 +77,7 @@ academies
 → 학원 정보
 
 academy_members
-→ 학원과 OWNER / DESK / TEACHER의 소속 관계
+→ 학원과 ACADEMY / TEACHER의 운영 소속 관계
 
 students
 → 학생 프로필
@@ -141,7 +141,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 |---|---|---|
 | `users` | 로그인 계정 정보 | 사용 |
 | `academies` | 학원 정보 | 예정 |
-| `academy_members` | 학원과 OWNER / DESK / TEACHER 소속 관계 | 예정 |
+| `academy_members` | 학원과 ACADEMY / TEACHER 운영 소속 관계 | 예정 |
 | `students` | 학생 프로필 정보 | 예정 |
 | `student_guardians` | 학부모와 학생 관계 | 예정 |
 | `academy_students` | 학원과 학생 소속 관계 | 예정 |
@@ -223,7 +223,9 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 - 소셜 가입 사용자는 `provider = KAKAO / GOOGLE / NAVER`, `provider_id`를 사용한다.
 - 소셜 가입 사용자는 `password`가 null일 수 있다.
 - API 응답에 `password`를 포함하지 않는다.
-- `ADMIN`, `OWNER`, `DESK`는 일반 회원가입으로 생성하지 않는다.
+- `ADMIN`은 일반 회원가입으로 생성하지 않는다.
+- `ACADEMY`는 일반 회원가입으로 생성하지 않고 ADMIN 전용 API로 생성한다.
+- `OWNER`, `DESK`는 MVP 역할에서 제외하며 향후 확장 역할로 검토한다.
 
 ---
 
@@ -284,7 +286,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 학원과 사용자 사이의 소속 관계를 저장하는 테이블이다.
 
-주로 `OWNER`, `DESK`, `TEACHER`가 학원과 연결될 때 사용한다.
+주로 `ACADEMY`, `TEACHER`가 학원과 연결될 때 사용한다.
 
 ### 컬럼
 
@@ -326,7 +328,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ### 비고
 
-- `OWNER`, `DESK`, `TEACHER`의 학원 소속 관계를 관리한다.
+- `ACADEMY`, `TEACHER`의 학원 운영 소속 관계를 관리한다.
 - 플랫폼 권한인 `ADMIN`은 일반 학원 소속 관계와 분리해서 관리할 수 있다.
 - 학원 내 권한과 전역 사용자 권한의 관계를 혼동하지 않는다.
 
@@ -946,11 +948,12 @@ userId
 | 값 | 설명 |
 |---|---|
 | ADMIN | Ringdu 플랫폼 관리자 |
-| OWNER | 학원 원장 |
-| DESK | 학원 데스크, 실장, 상담, 수납 담당자 |
-| TEACHER | 선생님 |
-| PARENT | 학부모 |
+| ACADEMY | 학원 |
+| TEACHER | 선생 |
+| PARENT | 부모 |
 | STUDENT | 학생 |
+
+`OWNER`, `DESK`는 MVP enum 기준에서 제외한다. 향후 학원 내부 세부 권한 분리가 필요할 때 확장 역할로 검토한다.
 
 ### AuthProvider
 
