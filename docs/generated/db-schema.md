@@ -140,7 +140,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | 테이블명 | 설명 | 상태 |
 |---|---|---|
 | `users` | 로그인 계정 정보 | 사용 |
-| `academies` | 학원 정보 | 예정 |
+| `academies` | 학원 정보 | 사용 |
 | `academy_members` | 학원과 ACADEMY / TEACHER 운영 소속 관계 | 예정 |
 | `students` | 학생 프로필 정보 | 예정 |
 | `student_guardians` | 학부모와 학생 관계 | 예정 |
@@ -196,6 +196,8 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 |---|---|---|---|
 | pk_users | id | Primary Key | 사용자 기본 키 |
 | uk_users_email | email | Unique | 이메일 중복 방지 |
+| users_role_check | role | Check | `ACADEMY`, `TEACHER`, `STUDENT`, `PARENT`, `ADMIN`만 허용 |
+| users_status_check | status | Check | `PENDING_APPROVAL`, `ACTIVE`, `INACTIVE`, `DELETED`만 허용 |
 
 ### 인덱스
 
@@ -210,6 +212,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 | 대상 테이블 | 관계 | 설명 |
 |---|---|---|
+| academies | 1:1 | `ACADEMY` 역할 사용자는 하나의 학원 정보를 가진다 |
 | academy_members | 1:N | 한 사용자는 여러 학원 소속 관계를 가질 수 있다 |
 | students | 1:1 또는 1:N | 학생 계정과 학생 프로필이 연결될 수 있다 |
 | student_guardians | 1:N | 학부모 사용자는 여러 학생과 연결될 수 있다 |
@@ -224,8 +227,35 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 - 소셜 가입 사용자는 `password`가 null일 수 있다.
 - API 응답에 `password`를 포함하지 않는다.
 - `ADMIN`은 일반 회원가입으로 생성하지 않는다.
-- `ACADEMY`는 일반 회원가입으로 생성하지 않고 ADMIN 전용 API로 생성한다.
+- `ACADEMY`는 학원 가입 신청으로 `PENDING_APPROVAL` 상태 생성 후 ADMIN 승인 시 `ACTIVE`가 된다.
+- ADMIN 전용 학원 계정 직접 생성 API는 운영 예외 기능으로 유지한다.
 - `OWNER`, `DESK`는 MVP 역할에서 제외하며 향후 확장 역할로 검토한다.
+
+---
+
+## academy_signup_applications
+
+### 설명
+
+학원 가입 신청 정보를 관리한다. ADMIN 승인 시 신청서 정보로 `academies` 레코드를 생성한다.
+
+### 주요 컬럼
+
+| 컬럼 | 설명 |
+|---|---|
+| `id` | 학원 가입 신청 ID |
+| `user_id` | `ACADEMY` 역할의 사용자 ID |
+| `academy_name` | 학원명 |
+| `representative_name` | 대표자명 |
+| `phone` | 연락처 |
+| `postal_code` | 우편번호 |
+| `address` | 기본 주소 |
+| `detail_address` | 상세 주소 |
+| `status` | `PENDING`, `APPROVED`, `REJECTED` |
+| `reviewed_by` | 검토한 ADMIN 사용자 ID |
+| `reviewed_at` | 검토 시각 |
+
+주민등록번호는 저장하지 않는다.
 
 ---
 
@@ -235,18 +265,21 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 학원 정보를 저장하는 테이블이다.
 
-학원 이름, 주소, 전화번호, 학원 코드 등 학원 자체의 정보를 관리한다.
+승인된 `ACADEMY` 역할의 `users` 레코드와 1:1로 연결되며, 학원명, 대표자, 전화번호, 주소, 운영 상태를 관리한다.
 
 ### 컬럼
 
 | 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
 |---|---|---:|---|---|
 | id | bigint | No | auto increment | 학원 ID |
+| user_id | bigint | No |  | 연결된 `ACADEMY` 사용자 ID |
 | name | varchar | No |  | 학원명 |
-| phone | varchar | Yes |  | 학원 전화번호 |
-| address | varchar | Yes |  | 학원 주소 |
-| academy_code | varchar | No |  | 학원 식별 코드 |
-| status | varchar | No |  | 학원 상태 |
+| representative_name | varchar | No |  | 대표자명 |
+| phone | varchar | No |  | 학원 전화번호 |
+| postal_code | varchar | Yes |  | 우편번호 |
+| address | varchar | Yes |  | 기본 주소 |
+| detail_address | varchar | Yes |  | 상세 주소 |
+| status | varchar | No | `ACTIVE` | 학원 상태 |
 | created_at | timestamp | No | current timestamp | 생성 일시 |
 | updated_at | timestamp | No | current timestamp | 수정 일시 |
 
@@ -255,19 +288,19 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | 이름 | 컬럼 | 유형 | 설명 |
 |---|---|---|---|
 | pk_academies | id | Primary Key | 학원 기본 키 |
-| uk_academies_academy_code | academy_code | Unique | 학원 코드 중복 방지 |
+| uk_academies_user_id | user_id | Unique | 한 `ACADEMY` 사용자는 하나의 학원만 가질 수 있다 |
 
 ### 인덱스
 
 | 이름 | 컬럼 | 유형 | 설명 |
 |---|---|---|---|
 | idx_academies_status | status | Index | 학원 상태별 조회 |
-| idx_academies_name | name | Index | 학원명 검색 |
 
 ### 관계
 
 | 대상 테이블 | 관계 | 설명 |
 |---|---|---|
+| users | N:1 / 1:1 | `academies.user_id`는 `users.id`를 참조하며 `user_id`는 unique다 |
 | academy_members | 1:N | 한 학원은 여러 운영 인력을 가질 수 있다 |
 | academy_students | 1:N | 한 학원은 여러 학생을 가질 수 있다 |
 | billing_invoices | 1:N | 한 학원은 여러 청구서를 가질 수 있다 |
@@ -275,7 +308,9 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 ### 비고
 
 - 학원 정보는 `users` 테이블에 넣지 않는다.
-- 학원 코드는 초대, 연결, 조회 흐름에서 사용할 수 있다.
+- `status` 값은 `ACTIVE`, `INACTIVE`를 사용한다.
+- 학원 가입 신청 승인 시 `academy_signup_applications`의 학원명, 대표자명, 전화번호, 주소가 복사된다.
+- ADMIN 직접 학원 계정 생성 API는 최소 학원 정보로 `academies` 레코드를 함께 생성한다.
 - 학원 삭제 정책은 실제 운영 정책에 맞게 별도 정의한다.
 
 ---

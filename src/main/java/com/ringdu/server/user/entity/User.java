@@ -85,6 +85,26 @@ public class User extends BaseEntity {
         );
     }
 
+    public static User createLocalUser(
+            String email,
+            String encodedPassword,
+            String name,
+            String phone,
+            Role role,
+            UserStatus status
+    ) {
+        return new User(
+                email,
+                encodedPassword,
+                name,
+                phone,
+                role,
+                status,
+                AuthProvider.LOCAL,
+                null
+        );
+    }
+
     public static User createSocialUser(String email, String name, String phone, Role role,
                                         AuthProvider provider, String providerId) {
         return new User(
@@ -101,5 +121,9 @@ public class User extends BaseEntity {
 
     public void deactivate() {
         this.status = UserStatus.INACTIVE;
+    }
+
+    public void activate() {
+        this.status = UserStatus.ACTIVE;
     }
 }

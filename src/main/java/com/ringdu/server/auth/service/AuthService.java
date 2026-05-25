@@ -1,5 +1,9 @@
 package com.ringdu.server.auth.service;
 
+import com.ringdu.server.academy.entity.AcademySignupApplication;
+import com.ringdu.server.academy.repository.AcademySignupApplicationRepository;
+import com.ringdu.server.auth.dto.AcademySignupRequest;
+import com.ringdu.server.auth.dto.AcademySignupResponse;
 import com.ringdu.server.auth.dto.LoginRequest;
 import com.ringdu.server.auth.dto.LoginResponse;
 import com.ringdu.server.auth.dto.LoginResult;
@@ -38,11 +42,13 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenService refreshTokenService;
+    private final AcademySignupApplicationRepository academySignupApplicationRepository;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
         validateDuplicatedEmail(request.email());
         validateSignupRole(request.role());
+        validatePasswordConfirm(request.password(), request.passwordConfirm());
 
         String encodedPassword = passwordEncoder.encode(request.password());
         User user = User.createLocalUser(
@@ -55,6 +61,34 @@ public class AuthService {
 
         User savedUser = userRepository.save(user);
         return SignupResponse.from(savedUser);
+    }
+
+    @Transactional
+    public AcademySignupResponse signupAcademy(AcademySignupRequest request) {
+        validateDuplicatedEmail(request.email());
+        validatePasswordConfirm(request.password(), request.passwordConfirm());
+
+        User academyUser = User.createLocalUser(
+                request.email(),
+                passwordEncoder.encode(request.password()),
+                request.representativeName(),
+                request.phone(),
+                Role.ACADEMY,
+                UserStatus.PENDING_APPROVAL
+        );
+        User savedUser = userRepository.save(academyUser);
+
+        AcademySignupApplication application = AcademySignupApplication.create(
+                savedUser,
+                request.academyName(),
+                request.representativeName(),
+                request.phone(),
+                request.postalCode(),
+                request.address(),
+                request.detailAddress()
+        );
+
+        return AcademySignupResponse.from(academySignupApplicationRepository.save(application));
     }
 
     @Transactional
@@ -107,6 +141,12 @@ public class AuthService {
         }
     }
 
+    private void validatePasswordConfirm(String password, String passwordConfirm) {
+        if (!password.equals(passwordConfirm)) {
+            throw new BusinessException(ErrorCode.PASSWORD_CONFIRM_MISMATCH);
+        }
+    }
+
     private void validateLoginUser(User user) {
         validateActiveUser(user);
 
@@ -116,6 +156,10 @@ public class AuthService {
     }
 
     private void validateActiveUser(User user) {
+        if (user.getStatus() == UserStatus.PENDING_APPROVAL) {
+            throw new BusinessException(ErrorCode.ACADEMY_APPROVAL_PENDING);
+        }
+
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException(ErrorCode.INACTIVE_USER);
         }

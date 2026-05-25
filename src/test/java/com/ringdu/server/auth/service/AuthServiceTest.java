@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ringdu.server.auth.dto.SignupRequest;
 import com.ringdu.server.auth.dto.SignupResponse;
+import com.ringdu.server.auth.dto.AcademySignupRequest;
 import com.ringdu.server.global.exception.BusinessException;
 import com.ringdu.server.global.exception.ErrorCode;
 import com.ringdu.server.user.entity.AuthProvider;
@@ -112,6 +113,83 @@ class AuthServiceTest {
     @DisplayName("ACADEMY 권한은 일반 회원가입으로 생성할 수 없다")
     void throwExceptionWhenAcademySignup() {
         assertSignupRoleNotAllowed(Role.ACADEMY);
+    }
+
+    @Test
+    @DisplayName("비밀번호 확인이 일치하지 않으면 일반 회원가입에 실패한다")
+    void throwExceptionWhenSignupPasswordConfirmMismatch() {
+        assertThatThrownBy(() -> authService.signup(new SignupRequest(
+                "password-confirm@ringdu.com",
+                "password123",
+                "different123",
+                "홍길동",
+                "010-1234-5678",
+                Role.TEACHER
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PASSWORD_CONFIRM_MISMATCH);
+    }
+
+    @Test
+    @DisplayName("ACADEMY 학원 가입 신청을 할 수 있다")
+    void signupAcademyApplication() {
+        var response = authService.signupAcademy(academySignupRequest("academy-apply@ringdu.com"));
+
+        assertThat(response.email()).isEqualTo("academy-apply@ringdu.com");
+        assertThat(response.role()).isEqualTo(Role.ACADEMY);
+        assertThat(response.status()).isEqualTo(UserStatus.PENDING_APPROVAL);
+        assertThat(response.academyName()).isEqualTo("링듀수학학원");
+
+        User user = userRepository.findByEmail("academy-apply@ringdu.com").orElseThrow();
+        assertThat(user.getRole()).isEqualTo(Role.ACADEMY);
+        assertThat(user.getStatus()).isEqualTo(UserStatus.PENDING_APPROVAL);
+        assertThat(user.getPassword()).isNotEqualTo("password1234");
+        assertThat(passwordEncoder.matches("password1234", user.getPassword())).isTrue();
+    }
+
+    @Test
+    @DisplayName("학원 가입 신청에서 비밀번호 확인이 일치하지 않으면 실패한다")
+    void throwExceptionWhenAcademySignupPasswordConfirmMismatch() {
+        assertThatThrownBy(() -> authService.signupAcademy(new AcademySignupRequest(
+                "academy-password-confirm@ringdu.com",
+                "password1234",
+                "different1234",
+                "링듀수학학원",
+                "홍길동",
+                "010-1234-5678",
+                "06123",
+                "서울시 강남구 테헤란로",
+                "101호"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PASSWORD_CONFIRM_MISMATCH);
+    }
+
+    @Test
+    @DisplayName("중복 이메일로 학원 가입 신청할 수 없다")
+    void throwExceptionWhenAcademySignupEmailDuplicated() {
+        authService.signupAcademy(academySignupRequest("duplicated-academy-apply@ringdu.com"));
+
+        assertThatThrownBy(() -> authService.signupAcademy(academySignupRequest("duplicated-academy-apply@ringdu.com")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
+    }
+
+    @Test
+    @DisplayName("승인 대기 ACADEMY 계정은 로그인할 수 없다")
+    void pendingAcademyCannotLogin() {
+        authService.signupAcademy(academySignupRequest("pending-academy-login@ringdu.com"));
+
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest(
+                "pending-academy-login@ringdu.com",
+                "password1234"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ACADEMY_APPROVAL_PENDING);
     }
 
     @Test
@@ -246,9 +324,24 @@ class AuthServiceTest {
         return new SignupRequest(
                 email,
                 password,
+                password,
                 "홍길동",
                 "010-1234-5678",
                 role
+        );
+    }
+
+    private AcademySignupRequest academySignupRequest(String email) {
+        return new AcademySignupRequest(
+                email,
+                "password1234",
+                "password1234",
+                "링듀수학학원",
+                "홍길동",
+                "010-1234-5678",
+                "06123",
+                "서울시 강남구 테헤란로",
+                "101호"
         );
     }
 }

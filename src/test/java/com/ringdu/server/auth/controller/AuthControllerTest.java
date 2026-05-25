@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ringdu.server.auth.dto.AcademySignupRequest;
 import com.ringdu.server.auth.dto.LoginRequest;
 import com.ringdu.server.global.security.cookie.RefreshTokenCookieProvider;
 import com.ringdu.server.global.security.jwt.JwtTokenProvider;
@@ -50,6 +51,40 @@ class AuthControllerTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Test
+    @DisplayName("학원 가입 신청은 승인 대기 ACADEMY 계정을 생성한다")
+    void academySignupApplicationSuccess() throws Exception {
+        mockMvc.perform(post("/api/auth/signup/academy")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(academySignupRequest("controller-academy-apply@ringdu.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.email").value("controller-academy-apply@ringdu.com"))
+                .andExpect(jsonPath("$.data.role").value("ACADEMY"))
+                .andExpect(jsonPath("$.data.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.data.academyName").value("링듀수학학원"));
+    }
+
+    @Test
+    @DisplayName("학원 가입 신청에서 비밀번호 확인이 일치하지 않으면 실패한다")
+    void academySignupApplicationFailsWhenPasswordConfirmMismatch() throws Exception {
+        mockMvc.perform(post("/api/auth/signup/academy")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AcademySignupRequest(
+                                "controller-academy-mismatch@ringdu.com",
+                                "password1234",
+                                "different1234",
+                                "링듀수학학원",
+                                "홍길동",
+                                "010-1234-5678",
+                                "06123",
+                                "서울시 강남구 테헤란로",
+                                "101호"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
 
     @Test
     @DisplayName("로컬 프론트 origin의 로그인 preflight 요청은 CORS 헤더와 함께 허용된다")
@@ -165,5 +200,19 @@ class AuthControllerTest {
                 "010-1234-5678",
                 Role.STUDENT
         ));
+    }
+
+    private AcademySignupRequest academySignupRequest(String email) {
+        return new AcademySignupRequest(
+                email,
+                "password1234",
+                "password1234",
+                "링듀수학학원",
+                "홍길동",
+                "010-1234-5678",
+                "06123",
+                "서울시 강남구 테헤란로",
+                "101호"
+        );
     }
 }
