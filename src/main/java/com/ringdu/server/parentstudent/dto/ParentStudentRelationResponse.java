@@ -1,0 +1,32 @@
+package com.ringdu.server.parentstudent.dto;
+
+import com.ringdu.server.parentstudent.entity.ParentStudentRelation;
+import com.ringdu.server.parentstudent.entity.ParentStudentRelationStatus;
+import java.time.LocalDateTime;
+
+public record ParentStudentRelationResponse(
+        Long relationId,
+        Long parentUserId,
+        String parentName,
+        String parentEmail,
+        Long studentUserId,
+        String studentName,
+        String studentEmail,
+        ParentStudentRelationStatus status,
+        LocalDateTime createdAt
+) {
+
+    public static ParentStudentRelationResponse from(ParentStudentRelation relation) {
+        return new ParentStudentRelationResponse(
+                relation.getId(),
+                relation.getParent().getId(),
+                relation.getParent().getName(),
+                relation.getParent().getEmail(),
+                relation.getStudent().getId(),
+                relation.getStudent().getName(),
+                relation.getStudent().getEmail(),
+                relation.getStatus(),
+                relation.getCreatedAt()
+        );
+    }
+}
