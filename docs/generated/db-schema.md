@@ -143,8 +143,9 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | `academies` | 학원 정보 | 사용 |
 | `academy_teacher_invitations` | 학원-선생님 초대장 | 사용 |
 | `academy_members` | 학원과 ACADEMY / TEACHER 운영 소속 관계 | 사용 |
+| `parent_student_invitations` | 부모-학생 연결 초대장 | 사용 |
+| `parent_student_relations` | 부모-학생 연결 관계 | 사용 |
 | `students` | 학생 프로필 정보 | 예정 |
-| `student_guardians` | 학부모와 학생 관계 | 예정 |
 | `academy_students` | 학원과 학생 소속 관계 | 예정 |
 | `attendance_records` | 출석 기록 | 예정 |
 | `homework_assignments` | 숙제 등록 정보 | 예정 |
@@ -216,7 +217,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | academies | 1:1 | `ACADEMY` 역할 사용자는 하나의 학원 정보를 가진다 |
 | academy_members | 1:N | 한 사용자는 여러 학원 소속 관계를 가질 수 있다 |
 | students | 1:1 또는 1:N | 학생 계정과 학생 프로필이 연결될 수 있다 |
-| student_guardians | 1:N | 학부모 사용자는 여러 학생과 연결될 수 있다 |
+| parent_student_relations | 1:N | 부모와 학생 사용자는 선택적으로 연결될 수 있다 |
 | audit_logs | 1:N | 한 사용자는 여러 활동 로그와 연결될 수 있다 |
 | notifications | 1:N | 한 사용자는 여러 알림을 받을 수 있다 |
 
@@ -423,6 +424,112 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 - 같은 학원과 같은 이메일의 `PENDING` 초대장은 중복 생성하지 않는다.
 - 선생님이 초대장을 수락하면 `academy_members`에 소속 관계를 생성한다.
 - 문자/이메일 실제 발송은 포함하지 않는다.
+
+---
+
+## parent_student_invitations
+
+### 설명
+
+부모와 학생이 서로 보낸 연결 초대장을 저장한다. 부모-학생 연결은 선택 기능이며 학원 학생 등록의 필수 조건이 아니다.
+
+초대코드 직접 입력 방식이 아니라 Ringdu 웹/앱 내부에서 수락 또는 거절하는 방식이다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
+|---|---|---:|---|---|
+| id | bigint | No | auto increment | 초대장 ID |
+| requester_user_id | bigint | No |  | 초대장을 보낸 사용자 ID |
+| receiver_email | varchar | No |  | 초대 수신자 이메일 |
+| receiver_phone | varchar | No |  | 초대 수신자 전화번호 |
+| requester_role | varchar | No |  | 초대 발신자 권한: `PARENT` 또는 `STUDENT` |
+| target_role | varchar | No |  | 초대 수신자 권한: `PARENT` 또는 `STUDENT` |
+| student_user_id | bigint | Yes |  | 연결 대상 학생 사용자 ID |
+| parent_user_id | bigint | Yes |  | 연결 대상 부모 사용자 ID |
+| message | varchar | Yes |  | 초대 메시지 |
+| status | varchar | No | `PENDING` | 초대 상태 |
+| responded_by_user_id | bigint | Yes |  | 수락/거절한 사용자 ID |
+| responded_at | timestamp | Yes |  | 수락/거절 시각 |
+| expires_at | timestamp | Yes |  | 만료 예정 시각 |
+| created_at | timestamp | No | current timestamp | 생성 일시 |
+| updated_at | timestamp | No | current timestamp | 수정 일시 |
+
+### 제약조건
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| pk_parent_student_invitations | id | Primary Key | 초대장 기본 키 |
+
+### 인덱스
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| idx_parent_student_invitations_requester_user_id | requester_user_id | Index | 보낸 초대장 조회 |
+| idx_parent_student_invitations_receiver_email | receiver_email | Index | 받은 초대장 조회 |
+| idx_parent_student_invitations_status | status | Index | 초대 상태별 조회 |
+| idx_parent_student_invitations_parent_user_id | parent_user_id | Index | 부모 사용자별 조회 |
+| idx_parent_student_invitations_student_user_id | student_user_id | Index | 학생 사용자별 조회 |
+
+### 비고
+
+- `status` 값은 `PENDING`, `ACCEPTED`, `REJECTED`, `EXPIRED`, `CANCELED`를 사용한다.
+- MVP에서는 `PENDING`, `ACCEPTED`, `REJECTED` 흐름을 먼저 사용한다.
+- 초대 수신자는 자기 이메일과 일치하는 초대장만 수락 또는 거절할 수 있다.
+- 수락하면 `parent_student_relations`에 관계를 생성한다.
+- 문자/이메일 실제 발송은 포함하지 않는다.
+
+---
+
+## parent_student_relations
+
+### 설명
+
+부모와 학생 사이의 선택적 연결 관계를 저장한다.
+
+부모는 학원 멤버가 아니며, 부모-학생 관계는 `academy_members`와 분리해서 관리한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
+|---|---|---:|---|---|
+| id | bigint | No | auto increment | 관계 ID |
+| parent_user_id | bigint | No |  | 부모 사용자 ID |
+| student_user_id | bigint | No |  | 학생 사용자 ID |
+| status | varchar | No | `ACTIVE` | 관계 상태 |
+| created_at | timestamp | No | current timestamp | 생성 일시 |
+| updated_at | timestamp | No | current timestamp | 수정 일시 |
+
+### 제약조건
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| pk_parent_student_relations | id | Primary Key | 관계 기본 키 |
+| fk_parent_student_relations_parent_user_id | parent_user_id | Foreign Key | users.id 참조 |
+| fk_parent_student_relations_student_user_id | student_user_id | Foreign Key | users.id 참조 |
+| uk_parent_student_relations_parent_student | parent_user_id, student_user_id | Unique | 같은 부모-학생 관계 중복 방지 |
+
+### 인덱스
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| idx_parent_student_relations_parent_user_id | parent_user_id | Index | 부모별 자녀 조회 |
+| idx_parent_student_relations_student_user_id | student_user_id | Index | 학생별 보호자 조회 |
+| idx_parent_student_relations_status | status | Index | 관계 상태별 조회 |
+
+### 관계
+
+| 대상 테이블 | 관계 | 설명 |
+|---|---|---|
+| users | N:1 | `parent_user_id`는 `PARENT` 역할 사용자를 참조한다 |
+| users | N:1 | `student_user_id`는 `STUDENT` 역할 사용자를 참조한다 |
+
+### 비고
+
+- `status` 값은 `ACTIVE`, `INACTIVE`를 사용한다.
+- 부모는 연결된 학생 정보만 조회할 수 있다.
+- 학생은 연결된 부모 정보를 조회할 수 있다.
+- 부모-학생 연결은 학원 소속 관계가 아니다.
 
 ---
 
