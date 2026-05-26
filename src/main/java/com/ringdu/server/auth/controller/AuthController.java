@@ -1,5 +1,7 @@
 package com.ringdu.server.auth.controller;
 
+import com.ringdu.server.auth.dto.AcademySignupRequest;
+import com.ringdu.server.auth.dto.AcademySignupResponse;
 import com.ringdu.server.auth.dto.LoginRequest;
 import com.ringdu.server.auth.dto.LoginResponse;
 import com.ringdu.server.auth.dto.LoginResult;
@@ -36,6 +38,12 @@ public class AuthController {
     public ApiResponse<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
         SignupResponse response = authService.signup(request);
         return ApiResponse.success("회원가입이 완료되었습니다.", response);
+    }
+
+    @PostMapping("/signup/academy")
+    public ApiResponse<AcademySignupResponse> signupAcademy(@Valid @RequestBody AcademySignupRequest request) {
+        AcademySignupResponse response = authService.signupAcademy(request);
+        return ApiResponse.success("학원 가입 신청이 완료되었습니다.", response);
     }
 
     @PostMapping("/login")

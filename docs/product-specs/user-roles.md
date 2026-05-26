@@ -102,7 +102,7 @@ PARENT
 STUDENT
 ```
 
-`ADMIN`과 `ACADEMY`는 일반 회원가입으로 생성하지 않는다.
+`ADMIN`은 일반 회원가입으로 생성하지 않는다. `ACADEMY`는 일반 회원가입으로 즉시 활성 계정이 되지 않고, 별도 학원 가입 신청을 통해 승인 대기 계정으로 생성한다.
 
 ```txt
 ADMIN
@@ -112,6 +112,11 @@ ADMIN
 - 운영 환경에서는 기본 비밀번호를 그대로 사용하면 안 되며, 환경변수 또는 별도 생성 절차로 대체한다.
 
 ACADEMY
-- ADMIN이 학원 계정 생성 API로 생성한다.
-- 실제 Academy 엔티티와 학원 정보 관리는 feat/academy-domain에서 구현한다.
+- 비로그인 사용자가 학원 가입 신청을 제출할 수 있다.
+- 가입 직후 `PENDING_APPROVAL` 상태이며 로그인할 수 없다.
+- ADMIN 승인 후 `ACTIVE` 상태가 되면 로그인할 수 있다.
+- ADMIN 승인 시 신청서 정보를 기반으로 `Academy` 데이터가 생성되고, `ACADEMY` 사용자와 1:1로 연결된다.
+- 승인된 `ACADEMY`는 `/api/academies/me`로 자기 학원 정보를 조회/수정하고 `/api/academies/me/dashboard`로 운영 요약을 조회한다.
+- ADMIN이 학원 계정을 직접 생성하는 API는 운영 예외 기능으로 유지할 수 있다.
+- 출석 승인은 선생 역할의 책임이며, 학원 계정은 출석 현황 조회만 담당한다.
 ```

@@ -1,5 +1,6 @@
 package com.ringdu.server.admin.service;
 
+import com.ringdu.server.academy.service.AcademyService;
 import com.ringdu.server.admin.dto.AcademyAccountResponse;
 import com.ringdu.server.admin.dto.CreateAcademyAccountRequest;
 import com.ringdu.server.global.exception.BusinessException;
@@ -18,6 +19,7 @@ public class AdminAcademyAccountService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AcademyService academyService;
 
     @Transactional
     public AcademyAccountResponse createAcademyAccount(CreateAcademyAccountRequest request) {
@@ -31,7 +33,10 @@ public class AdminAcademyAccountService {
                 Role.ACADEMY
         );
 
-        return AcademyAccountResponse.from(userRepository.save(academyUser));
+        User savedUser = userRepository.save(academyUser);
+        academyService.createForDirectAccount(savedUser, request.name(), request.phone());
+
+        return AcademyAccountResponse.from(savedUser);
     }
 
     private void validateDuplicatedEmail(String email) {

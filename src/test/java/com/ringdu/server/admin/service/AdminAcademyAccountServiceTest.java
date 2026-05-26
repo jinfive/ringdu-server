@@ -3,6 +3,7 @@ package com.ringdu.server.admin.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.ringdu.server.academy.repository.AcademyRepository;
 import com.ringdu.server.admin.dto.CreateAcademyAccountRequest;
 import com.ringdu.server.global.exception.BusinessException;
 import com.ringdu.server.global.exception.ErrorCode;
@@ -31,6 +32,9 @@ class AdminAcademyAccountServiceTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private AcademyRepository academyRepository;
+
     @Test
     @DisplayName("ADMIN은 ACADEMY 계정을 생성할 수 있다")
     void createAcademyAccount() {
@@ -44,6 +48,11 @@ class AdminAcademyAccountServiceTest {
         assertThat(user.getRole()).isEqualTo(Role.ACADEMY);
         assertThat(user.getPassword()).isNotEqualTo("password1234");
         assertThat(passwordEncoder.matches("password1234", user.getPassword())).isTrue();
+        assertThat(academyRepository.findByUserId(user.getId())).hasValueSatisfying(academy -> {
+            assertThat(academy.getName()).isEqualTo("링듀수학학원");
+            assertThat(academy.getRepresentativeName()).isEqualTo("링듀수학학원");
+            assertThat(academy.getPhone()).isEqualTo("010-1234-5678");
+        });
     }
 
     @Test

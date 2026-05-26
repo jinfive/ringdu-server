@@ -1,5 +1,22 @@
 # Domain Roadmap
 
+## 0. 학원 도메인
+
+`Academy`는 `ACADEMY` 역할의 `User`와 1:1로 연결되는 실제 학원 정보다.
+
+현재 구현 범위:
+
+```txt
+ADMIN 학원 가입 신청 승인
+→ ACADEMY User ACTIVE 전환
+→ AcademySignupApplication APPROVED 전환
+→ Academy 생성
+→ /api/academies/me 조회/수정
+→ /api/academies/me/dashboard 0건 기반 요약 제공
+```
+
+대시보드 요약은 등록 학생, 등록 선생님, 이번 달 미납, 신규 상담 대기만 제공한다. 운영 클래스, 오늘 출석 현황, 출석 승인 대기는 학원 홈 요약에 포함하지 않는다.
+
 ## 1. 상담 관리
 
 상담 관리는 신규 등록 CRM이 아니다. MVP의 상담 관리는 실제 재원생 학생 관리 하위 기능이다.
@@ -254,4 +271,3 @@ Ringdu 커뮤니티는 크게 두 개로 나눈다.
 프리미엄 커뮤니티 노출
 추후 구독형 기능
 ```
-
