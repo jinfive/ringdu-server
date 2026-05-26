@@ -11,9 +11,13 @@ public record AcademyDashboardResponse(
 ) {
 
     public static AcademyDashboardResponse empty() {
+        return of(0);
+    }
+
+    public static AcademyDashboardResponse of(long teacherCount) {
         return new AcademyDashboardResponse(
                 0,
-                0,
+                Math.toIntExact(teacherCount),
                 0,
                 0,
                 List.of(new AcademyDashboardNotificationResponse(

@@ -141,7 +141,8 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 |---|---|---|
 | `users` | 로그인 계정 정보 | 사용 |
 | `academies` | 학원 정보 | 사용 |
-| `academy_members` | 학원과 ACADEMY / TEACHER 운영 소속 관계 | 예정 |
+| `academy_teacher_invitations` | 학원-선생님 초대장 | 사용 |
+| `academy_members` | 학원과 ACADEMY / TEACHER 운영 소속 관계 | 사용 |
 | `students` | 학생 프로필 정보 | 예정 |
 | `student_guardians` | 학부모와 학생 관계 | 예정 |
 | `academy_students` | 학원과 학생 소속 관계 | 예정 |
@@ -321,7 +322,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 학원과 사용자 사이의 소속 관계를 저장하는 테이블이다.
 
-주로 `ACADEMY`, `TEACHER`가 학원과 연결될 때 사용한다.
+현재는 선생님이 학원 초대장을 수락하면 `TEACHER` 소속 관계를 저장할 때 사용한다.
 
 ### 컬럼
 
@@ -330,9 +331,8 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | id | bigint | No | auto increment | 소속 관계 ID |
 | academy_id | bigint | No |  | 학원 ID |
 | user_id | bigint | No |  | 사용자 ID |
-| academy_role | varchar | No |  | 학원 내 역할 |
+| role | varchar | No |  | 학원 내 역할 |
 | status | varchar | No |  | 소속 상태 |
-| joined_at | timestamp | Yes |  | 가입 또는 승인 일시 |
 | created_at | timestamp | No | current timestamp | 생성 일시 |
 | updated_at | timestamp | No | current timestamp | 수정 일시 |
 
@@ -351,7 +351,6 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 |---|---|---|---|
 | idx_academy_members_academy_id | academy_id | Index | 학원별 구성원 조회 |
 | idx_academy_members_user_id | user_id | Index | 사용자별 소속 학원 조회 |
-| idx_academy_members_academy_role | academy_role | Index | 학원 내 역할별 조회 |
 | idx_academy_members_status | status | Index | 소속 상태별 조회 |
 
 ### 관계
@@ -363,9 +362,67 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ### 비고
 
-- `ACADEMY`, `TEACHER`의 학원 운영 소속 관계를 관리한다.
+- 현재 구현 범위에서는 `TEACHER`의 학원 운영 소속 관계를 관리한다.
+- `role` 값은 MVP에서 `TEACHER`를 사용한다.
+- `status` 값은 `ACTIVE`, `INACTIVE`를 사용한다.
 - 플랫폼 권한인 `ADMIN`은 일반 학원 소속 관계와 분리해서 관리할 수 있다.
 - 학원 내 권한과 전역 사용자 권한의 관계를 혼동하지 않는다.
+
+---
+
+## academy_teacher_invitations
+
+### 설명
+
+학원이 선생님에게 보낸 초대장을 저장한다. 선생님은 자기 이메일과 일치하는 초대장만 조회하고 수락 또는 거절할 수 있다.
+
+초대코드 직접 입력 방식이 아니라 Ringdu 웹/앱 내부에서 초대장을 확인하는 방식이다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
+|---|---|---:|---|---|
+| id | bigint | No | auto increment | 초대장 ID |
+| academy_id | bigint | No |  | 초대한 학원 ID |
+| teacher_email | varchar | No |  | 초대 대상 선생님 이메일 |
+| teacher_phone | varchar | No |  | 초대 대상 선생님 전화번호 |
+| message | varchar | Yes |  | 초대 메시지 |
+| status | varchar | No | `PENDING` | 초대 상태 |
+| invited_by_user_id | bigint | No |  | 초대장을 생성한 ACADEMY 사용자 ID |
+| responded_by_user_id | bigint | Yes |  | 수락/거절한 TEACHER 사용자 ID |
+| responded_at | timestamp | Yes |  | 수락/거절 시각 |
+| expires_at | timestamp | Yes |  | 만료 예정 시각 |
+| created_at | timestamp | No | current timestamp | 생성 일시 |
+| updated_at | timestamp | No | current timestamp | 수정 일시 |
+
+### 제약조건
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| pk_academy_teacher_invitations | id | Primary Key | 초대장 기본 키 |
+| fk_academy_teacher_invitations_academy_id | academy_id | Foreign Key | academies.id 참조 |
+
+### 인덱스
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| idx_teacher_invitations_academy_id | academy_id | Index | 학원별 초대장 조회 |
+| idx_teacher_invitations_teacher_email | teacher_email | Index | 선생님 이메일별 초대장 조회 |
+| idx_teacher_invitations_status | status | Index | 초대 상태별 조회 |
+
+### 관계
+
+| 대상 테이블 | 관계 | 설명 |
+|---|---|---|
+| academies | N:1 | 초대장은 특정 학원에서 생성한다 |
+
+### 비고
+
+- `status` 값은 `PENDING`, `ACCEPTED`, `REJECTED`, `EXPIRED`, `CANCELED`를 사용한다.
+- MVP에서는 `PENDING`, `ACCEPTED`, `REJECTED` 흐름을 먼저 사용한다.
+- 같은 학원과 같은 이메일의 `PENDING` 초대장은 중복 생성하지 않는다.
+- 선생님이 초대장을 수락하면 `academy_members`에 소속 관계를 생성한다.
+- 문자/이메일 실제 발송은 포함하지 않는다.
 
 ---
 
