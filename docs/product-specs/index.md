@@ -47,7 +47,7 @@
 | `auth.md` | 회원가입, 로그인, 로그아웃, 인증 흐름 |
 | `account.md` | 계정 정보, 프로필, 비밀번호 변경 |
 | `admin.md` | 관리자 기능과 권한 |
-| `notification.md` | 알림, 이메일, 문자, 푸시 정책 |
+| `notification.md` | ACADEMY, TEACHER, PARENT, STUDENT 공통 알림함 설계 |
 | `search.md` | 검색, 필터, 정렬 기준 |
 | `settings.md` | 사용자 설정 및 환경 설정 |
 | `billing.md` | 결제, 요금제, 청구 정책 |
