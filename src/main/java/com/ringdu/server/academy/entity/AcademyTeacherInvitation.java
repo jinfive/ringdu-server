@@ -26,7 +26,8 @@ import lombok.NoArgsConstructor;
         name = "academy_teacher_invitations",
         indexes = {
                 @Index(name = "idx_teacher_invitations_academy_id", columnList = "academy_id"),
-                @Index(name = "idx_teacher_invitations_teacher_email", columnList = "teacher_email"),
+                @Index(name = "idx_teacher_invitations_teacher_phone", columnList = "teacher_phone"),
+                @Index(name = "idx_teacher_invitations_teacher_user_id", columnList = "teacher_user_id"),
                 @Index(name = "idx_teacher_invitations_status", columnList = "status")
         }
 )
@@ -41,10 +42,13 @@ public class AcademyTeacherInvitation extends BaseEntity {
     @JoinColumn(name = "academy_id", nullable = false)
     private Academy academy;
 
-    @Column(name = "teacher_email", nullable = false, length = 100)
+    @Column(name = "teacher_user_id")
+    private Long teacherUserId;
+
+    @Column(name = "teacher_email", length = 100)
     private String teacherEmail;
 
-    @Column(nullable = false, length = 30)
+    @Column(name = "teacher_phone", nullable = false, length = 30)
     private String teacherPhone;
 
     @Column(length = 500)
@@ -65,6 +69,7 @@ public class AcademyTeacherInvitation extends BaseEntity {
 
     private AcademyTeacherInvitation(
             Academy academy,
+            Long teacherUserId,
             String teacherEmail,
             String teacherPhone,
             String message,
@@ -72,6 +77,7 @@ public class AcademyTeacherInvitation extends BaseEntity {
             LocalDateTime expiresAt
     ) {
         this.academy = academy;
+        this.teacherUserId = teacherUserId;
         this.teacherEmail = teacherEmail;
         this.teacherPhone = teacherPhone;
         this.message = message;
@@ -82,6 +88,7 @@ public class AcademyTeacherInvitation extends BaseEntity {
 
     public static AcademyTeacherInvitation create(
             Academy academy,
+            Long teacherUserId,
             String teacherEmail,
             String teacherPhone,
             String message,
@@ -90,6 +97,7 @@ public class AcademyTeacherInvitation extends BaseEntity {
     ) {
         return new AcademyTeacherInvitation(
                 academy,
+                teacherUserId,
                 teacherEmail,
                 teacherPhone,
                 message,
@@ -100,6 +108,9 @@ public class AcademyTeacherInvitation extends BaseEntity {
 
     public void accept(Long teacherUserId, LocalDateTime respondedAt) {
         validatePending();
+        if (this.teacherUserId == null) {
+            this.teacherUserId = teacherUserId;
+        }
         this.status = AcademyTeacherInvitationStatus.ACCEPTED;
         this.respondedByUserId = teacherUserId;
         this.respondedAt = respondedAt;

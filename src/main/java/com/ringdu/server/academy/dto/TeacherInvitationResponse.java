@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 
 public record TeacherInvitationResponse(
         Long invitationId,
+        Long teacherUserId,
         String teacherEmail,
         String teacherPhone,
         String message,
@@ -18,6 +19,7 @@ public record TeacherInvitationResponse(
     public static TeacherInvitationResponse from(AcademyTeacherInvitation invitation) {
         return new TeacherInvitationResponse(
                 invitation.getId(),
+                invitation.getTeacherUserId(),
                 invitation.getTeacherEmail(),
                 invitation.getTeacherPhone(),
                 invitation.getMessage(),

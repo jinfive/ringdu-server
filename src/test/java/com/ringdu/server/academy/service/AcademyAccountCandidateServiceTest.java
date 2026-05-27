@@ -59,6 +59,18 @@ class AcademyAccountCandidateServiceTest {
     }
 
     @Test
+    @DisplayName("phone으로 TEACHER 후보를 검색할 수 있다")
+    void searchTeacherByPhone() {
+        saveUser("teacher-candidate@ringdu.com", "010-3333-2222", Role.TEACHER);
+
+        var response = candidateService.searchCandidates(Role.TEACHER, null, "010-3333-2222");
+
+        assertThat(response.candidates()).hasSize(1);
+        assertThat(response.candidates().get(0).role()).isEqualTo(Role.TEACHER);
+        assertThat(response.candidates().get(0).phone()).isEqualTo("010-3333-2222");
+    }
+
+    @Test
     @DisplayName("email 없이 account-candidates 호출이 가능하다")
     void searchWithoutEmail() {
         saveUser("phone-only@ringdu.com", "010-3333-1111", Role.STUDENT);

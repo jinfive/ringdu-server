@@ -218,17 +218,20 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("승인 대기 ACADEMY 계정은 로그인할 수 없다")
-    void pendingAcademyCannotLogin() {
+    @DisplayName("승인 대기 ACADEMY 계정은 로그인할 수 있고 status가 반환된다")
+    void pendingAcademyCanLogin() {
         authService.signupAcademy(academySignupRequest("pending-academy-login@ringdu.com"));
 
-        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest(
+        var result = authService.login(new com.ringdu.server.auth.dto.LoginRequest(
                 "pending-academy-login@ringdu.com",
                 "password1234"
-        )))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.ACADEMY_APPROVAL_PENDING);
+        ));
+
+        assertThat(result.loginResponse().role()).isEqualTo(Role.ACADEMY);
+        assertThat(result.loginResponse().status()).isEqualTo(UserStatus.PENDING_APPROVAL);
+
+        User user = userRepository.findByEmail("pending-academy-login@ringdu.com").orElseThrow();
+        assertThat(authService.getMe(user.getId()).status()).isEqualTo(UserStatus.PENDING_APPROVAL);
     }
 
     @Test
@@ -309,18 +312,24 @@ class AuthServiceTest {
     @Test
     @DisplayName("비활성화 계정은 로그인할 수 없다")
     void throwExceptionWhenInactiveUserLogin() {
+        assertInactiveUserCannotLogin(Role.TEACHER, "inactive-teacher@ringdu.com");
+        assertInactiveUserCannotLogin(Role.PARENT, "inactive-parent@ringdu.com");
+        assertInactiveUserCannotLogin(Role.STUDENT, "inactive-student@ringdu.com");
+    }
+
+    private void assertInactiveUserCannotLogin(Role role, String email) {
         User user = User.createLocalUser(
-                "inactive@ringdu.com",
+                email,
                 passwordEncoder.encode("password123"),
                 "홍길동",
-                "010-1234-5678",
-                Role.PARENT
+                "010-7777-" + Math.abs(email.hashCode() % 9000 + 1000),
+                role
         );
         user.deactivate();
         userRepository.save(user);
 
         assertThat(user.getStatus()).isEqualTo(UserStatus.INACTIVE);
-        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest("inactive@ringdu.com", "password123")))
+        assertThatThrownBy(() -> authService.login(new com.ringdu.server.auth.dto.LoginRequest(email, "password123")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INACTIVE_USER);

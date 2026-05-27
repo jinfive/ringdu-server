@@ -2,6 +2,7 @@ package com.ringdu.server.auth.dto;
 
 import com.ringdu.server.user.entity.Role;
 import com.ringdu.server.user.entity.User;
+import com.ringdu.server.user.entity.UserStatus;
 
 public record LoginResponse(
         String accessToken,
@@ -9,7 +10,8 @@ public record LoginResponse(
         Long userId,
         String email,
         String name,
-        Role role
+        Role role,
+        UserStatus status
 ) {
 
     public static LoginResponse of(String accessToken, User user) {
@@ -19,7 +21,8 @@ public record LoginResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getName(),
-                user.getRole()
+                user.getRole(),
+                user.getStatus()
         );
     }
 }

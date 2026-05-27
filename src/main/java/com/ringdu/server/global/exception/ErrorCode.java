@@ -25,6 +25,7 @@ public enum ErrorCode {
     TEACHER_INVITATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 대기 중인 선생님 초대장이 있습니다."),
     TEACHER_INVITATION_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 선생님 초대장입니다."),
     TEACHER_INVITATION_EMAIL_MISMATCH(HttpStatus.FORBIDDEN, "본인에게 온 선생님 초대장만 처리할 수 있습니다."),
+    TEACHER_INVITATION_PHONE_MISMATCH(HttpStatus.FORBIDDEN, "본인 전화번호로 온 선생님 초대장만 처리할 수 있습니다."),
     TEACHER_ALREADY_CONNECTED(HttpStatus.CONFLICT, "이미 학원에 연결된 선생님입니다."),
     TEACHER_ROLE_REQUIRED(HttpStatus.BAD_REQUEST, "선생님 계정만 초대할 수 있습니다."),
     PARENT_STUDENT_INVITATION_NOT_FOUND(HttpStatus.NOT_FOUND, "부모-학생 연결 초대장을 찾을 수 없습니다."),
