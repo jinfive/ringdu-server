@@ -7,13 +7,19 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AcademyTeacherInvitationRepository extends JpaRepository<AcademyTeacherInvitation, Long> {
 
-    boolean existsByAcademyIdAndTeacherEmailAndStatus(
+    boolean existsByAcademyIdAndTeacherPhoneAndStatus(
             Long academyId,
-            String teacherEmail,
+            String teacherPhone,
+            AcademyTeacherInvitationStatus status
+    );
+
+    boolean existsByAcademyIdAndTeacherUserIdAndStatus(
+            Long academyId,
+            Long teacherUserId,
             AcademyTeacherInvitationStatus status
     );
 
     List<AcademyTeacherInvitation> findAllByAcademyIdOrderByCreatedAtDesc(Long academyId);
 
-    List<AcademyTeacherInvitation> findAllByTeacherEmailOrderByCreatedAtDesc(String teacherEmail);
+    List<AcademyTeacherInvitation> findAllByTeacherPhoneOrderByCreatedAtDesc(String teacherPhone);
 }

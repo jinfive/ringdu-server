@@ -19,10 +19,10 @@ import com.ringdu.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -38,19 +38,20 @@ public class AcademyTeacherInvitationService {
     @Transactional
     public TeacherInvitationResponse createInvitation(Long academyUserId, TeacherInvitationCreateRequest request) {
         Academy academy = getAcademyForUser(academyUserId);
-        String teacherEmail = normalizeEmail(request.teacherEmail());
+        String teacherPhone = normalizePhone(request.teacherPhone());
+        User teacher = resolveTeacher(request.teacherUserId(), teacherPhone);
 
-        userRepository.findByEmail(teacherEmail).ifPresent(teacher -> {
-            validateTeacherRole(teacher);
+        if (teacher != null) {
             validateTeacherNotConnected(academy.getId(), teacher.getId());
-        });
-        validateNoPendingInvitation(academy.getId(), teacherEmail);
-        validateNoAcceptedInvitation(academy.getId(), teacherEmail);
+        }
+        validateNoPendingInvitation(academy.getId(), teacherPhone, teacher);
+        validateNoAcceptedInvitation(academy.getId(), teacherPhone, teacher);
 
         AcademyTeacherInvitation invitation = AcademyTeacherInvitation.create(
                 academy,
-                teacherEmail,
-                request.teacherPhone().trim(),
+                teacher == null ? null : teacher.getId(),
+                teacher == null ? null : teacher.getEmail(),
+                teacherPhone,
                 normalizeMessage(request.message(), academy.getName()),
                 academyUserId,
                 LocalDateTime.now().plusDays(INVITATION_EXPIRATION_DAYS)
@@ -80,9 +81,9 @@ public class AcademyTeacherInvitationService {
     @Transactional(readOnly = true)
     public List<MyTeacherInvitationResponse> getMyTeacherInvitations(Long teacherUserId) {
         User teacher = getTeacherUser(teacherUserId);
-        String teacherEmail = normalizeEmail(teacher.getEmail());
+        String teacherPhone = normalizePhone(teacher.getPhone());
 
-        return invitationRepository.findAllByTeacherEmailOrderByCreatedAtDesc(teacherEmail)
+        return invitationRepository.findAllByTeacherPhoneOrderByCreatedAtDesc(teacherPhone)
                 .stream()
                 .sorted(Comparator
                         .comparing((AcademyTeacherInvitation invitation) -> !invitation.isPending())
@@ -142,40 +143,69 @@ public class AcademyTeacherInvitationService {
         }
     }
 
+    private void validateActiveTeacher(User user) {
+        validateTeacherRole(user);
+        if (user.getStatus() != com.ringdu.server.user.entity.UserStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.TEACHER_ROLE_REQUIRED);
+        }
+    }
+
     private void validateTeacherNotConnected(Long academyId, Long teacherUserId) {
         if (academyMemberRepository.existsByAcademyIdAndUserId(academyId, teacherUserId)) {
             throw new BusinessException(ErrorCode.TEACHER_ALREADY_CONNECTED);
         }
     }
 
-    private void validateNoPendingInvitation(Long academyId, String teacherEmail) {
-        if (invitationRepository.existsByAcademyIdAndTeacherEmailAndStatus(
-                academyId,
-                teacherEmail,
-                AcademyTeacherInvitationStatus.PENDING
-        )) {
+    private void validateNoPendingInvitation(Long academyId, String teacherPhone, User teacher) {
+        if (invitationRepository.existsByAcademyIdAndTeacherPhoneAndStatus(
+                academyId, teacherPhone, AcademyTeacherInvitationStatus.PENDING
+        ) || (teacher != null && invitationRepository.existsByAcademyIdAndTeacherUserIdAndStatus(
+                academyId, teacher.getId(), AcademyTeacherInvitationStatus.PENDING
+        ))) {
             throw new BusinessException(ErrorCode.TEACHER_INVITATION_ALREADY_EXISTS);
         }
     }
 
-    private void validateNoAcceptedInvitation(Long academyId, String teacherEmail) {
-        if (invitationRepository.existsByAcademyIdAndTeacherEmailAndStatus(
-                academyId,
-                teacherEmail,
-                AcademyTeacherInvitationStatus.ACCEPTED
-        )) {
+    private void validateNoAcceptedInvitation(Long academyId, String teacherPhone, User teacher) {
+        if (invitationRepository.existsByAcademyIdAndTeacherPhoneAndStatus(
+                academyId, teacherPhone, AcademyTeacherInvitationStatus.ACCEPTED
+        ) || (teacher != null && invitationRepository.existsByAcademyIdAndTeacherUserIdAndStatus(
+                academyId, teacher.getId(), AcademyTeacherInvitationStatus.ACCEPTED
+        ))) {
             throw new BusinessException(ErrorCode.TEACHER_ALREADY_CONNECTED);
         }
     }
 
     private void validateInvitationBelongsToTeacher(AcademyTeacherInvitation invitation, User teacher) {
-        if (!invitation.getTeacherEmail().equals(normalizeEmail(teacher.getEmail()))) {
-            throw new BusinessException(ErrorCode.TEACHER_INVITATION_EMAIL_MISMATCH);
+        if (!invitation.getTeacherPhone().equals(normalizePhone(teacher.getPhone()))) {
+            throw new BusinessException(ErrorCode.TEACHER_INVITATION_PHONE_MISMATCH);
         }
     }
 
-    private String normalizeEmail(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
+    private User resolveTeacher(Long teacherUserId, String teacherPhone) {
+        if (teacherUserId != null) {
+            User teacher = userRepository.findById(teacherUserId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+            validateActiveTeacher(teacher);
+            if (!teacherPhone.equals(normalizePhone(teacher.getPhone()))) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+            }
+            return teacher;
+        }
+
+        List<User> teachers = userRepository.findAllByPhoneAndRoleAndStatus(
+                teacherPhone,
+                Role.TEACHER,
+                com.ringdu.server.user.entity.UserStatus.ACTIVE
+        );
+        return teachers.size() == 1 ? teachers.get(0) : null;
+    }
+
+    private String normalizePhone(String phone) {
+        if (!StringUtils.hasText(phone)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return phone.trim();
     }
 
     private String normalizeMessage(String message, String academyName) {

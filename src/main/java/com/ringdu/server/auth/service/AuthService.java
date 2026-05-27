@@ -157,14 +157,22 @@ public class AuthService {
     }
 
     private void validateLoginUser(User user) {
-        validateActiveUser(user);
-
         if (user.getProvider() != AuthProvider.LOCAL) {
             throw new BusinessException(ErrorCode.LOCAL_LOGIN_NOT_ALLOWED);
         }
+
+        validateLoginStatus(user);
     }
 
     private void validateActiveUser(User user) {
+        validateLoginStatus(user);
+    }
+
+    private void validateLoginStatus(User user) {
+        if (user.getRole() == Role.ACADEMY && user.getStatus() == UserStatus.PENDING_APPROVAL) {
+            return;
+        }
+
         if (user.getStatus() == UserStatus.PENDING_APPROVAL) {
             throw new BusinessException(ErrorCode.ACADEMY_APPROVAL_PENDING);
         }

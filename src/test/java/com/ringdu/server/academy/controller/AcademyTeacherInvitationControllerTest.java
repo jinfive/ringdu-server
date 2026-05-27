@@ -62,13 +62,16 @@ class AcademyTeacherInvitationControllerTest {
     @DisplayName("ACADEMY는 선생님 초대장을 생성할 수 있다")
     void academyCanCreateInvitation() throws Exception {
         String token = approvedAcademyAccessToken("controller-invite-academy@ringdu.com");
+        String teacherPhone = "010-2222-3001";
 
         mockMvc.perform(post("/api/academies/me/teacher-invitations")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invitationRequest("controller-teacher@ringdu.com"))))
+                        .content(objectMapper.writeValueAsString(invitationRequest(null, teacherPhone))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.teacherEmail").value("controller-teacher@ringdu.com"))
+                .andExpect(jsonPath("$.data.teacherUserId").isEmpty())
+                .andExpect(jsonPath("$.data.teacherEmail").isEmpty())
+                .andExpect(jsonPath("$.data.teacherPhone").value(teacherPhone))
                 .andExpect(jsonPath("$.data.status").value("PENDING"));
     }
 
@@ -76,12 +79,16 @@ class AcademyTeacherInvitationControllerTest {
     @EnumSource(value = Role.class, names = {"TEACHER", "PARENT", "STUDENT"})
     @DisplayName("TEACHER/PARENT/STUDENT는 선생님 초대장을 생성할 수 없다")
     void nonAcademyCannotCreateInvitation(Role role) throws Exception {
-        String token = accessToken(saveUser(role.name().toLowerCase() + "-cannot-invite@ringdu.com", role));
+        String token = accessToken(saveUser(
+                role.name().toLowerCase() + "-cannot-invite@ringdu.com",
+                phoneFor(role.name() + "-cannot-invite"),
+                role
+        ));
 
         mockMvc.perform(post("/api/academies/me/teacher-invitations")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invitationRequest("blocked-teacher@ringdu.com"))))
+                        .content(objectMapper.writeValueAsString(invitationRequest(null, "010-2222-3002"))))
                 .andExpect(status().isForbidden());
     }
 
@@ -91,12 +98,13 @@ class AcademyTeacherInvitationControllerTest {
         String email = "controller-list-invitation-academy@ringdu.com";
         String token = approvedAcademyAccessToken(email);
         Long academyUserId = userRepository.findByEmail(email).orElseThrow().getId();
-        invitationService.createInvitation(academyUserId, invitationRequest("controller-list-teacher@ringdu.com"));
+        String teacherPhone = "010-2222-3003";
+        invitationService.createInvitation(academyUserId, invitationRequest(null, teacherPhone));
 
         mockMvc.perform(get("/api/academies/me/teacher-invitations")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].teacherEmail").value("controller-list-teacher@ringdu.com"))
+                .andExpect(jsonPath("$.data[0].teacherPhone").value(teacherPhone))
                 .andExpect(jsonPath("$.data[0].status").value("PENDING"));
     }
 
@@ -106,10 +114,10 @@ class AcademyTeacherInvitationControllerTest {
         String email = "controller-list-teacher-academy@ringdu.com";
         String token = approvedAcademyAccessToken(email);
         Long academyUserId = userRepository.findByEmail(email).orElseThrow().getId();
-        User teacher = saveUser("controller-connected-teacher@ringdu.com", Role.TEACHER);
+        User teacher = saveUser("controller-connected-teacher@ringdu.com", "010-2222-3004", Role.TEACHER);
         Long invitationId = invitationService.createInvitation(
                 academyUserId,
-                invitationRequest(teacher.getEmail())
+                invitationRequest(teacher.getId(), teacher.getPhone())
         ).invitationId();
         invitationService.acceptInvitation(teacher.getId(), invitationId);
 
@@ -125,13 +133,13 @@ class AcademyTeacherInvitationControllerTest {
     @DisplayName("TEACHER는 자기 초대장 목록을 조회할 수 있다")
     void teacherCanGetOwnInvitations() throws Exception {
         Long academyUserId = approvedAcademyUserId("controller-teacher-own-list-academy@ringdu.com");
-        User teacher = saveUser("controller-own-invitation-teacher@ringdu.com", Role.TEACHER);
-        invitationService.createInvitation(academyUserId, invitationRequest(teacher.getEmail()));
+        User teacher = saveUser("controller-own-invitation-teacher@ringdu.com", "010-2222-3005", Role.TEACHER);
+        invitationService.createInvitation(academyUserId, invitationRequest(null, teacher.getPhone()));
 
         mockMvc.perform(get("/api/teacher/invitations")
                         .header("Authorization", "Bearer " + accessToken(teacher)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].teacherEmail").value(teacher.getEmail()))
+                .andExpect(jsonPath("$.data[0].teacherPhone").value(teacher.getPhone()))
                 .andExpect(jsonPath("$.data[0].academyName").value("링듀수학학원"));
     }
 
@@ -139,10 +147,10 @@ class AcademyTeacherInvitationControllerTest {
     @DisplayName("TEACHER는 자기 초대장을 수락할 수 있다")
     void teacherCanAcceptInvitation() throws Exception {
         Long academyUserId = approvedAcademyUserId("controller-accept-academy@ringdu.com");
-        User teacher = saveUser("controller-accept-teacher@ringdu.com", Role.TEACHER);
+        User teacher = saveUser("controller-accept-teacher@ringdu.com", "010-2222-3006", Role.TEACHER);
         Long invitationId = invitationService.createInvitation(
                 academyUserId,
-                invitationRequest(teacher.getEmail())
+                invitationRequest(null, teacher.getPhone())
         ).invitationId();
 
         mockMvc.perform(post("/api/teacher/invitations/{invitationId}/accept", invitationId)
@@ -155,10 +163,10 @@ class AcademyTeacherInvitationControllerTest {
     @DisplayName("TEACHER는 자기 초대장을 거절할 수 있다")
     void teacherCanRejectInvitation() throws Exception {
         Long academyUserId = approvedAcademyUserId("controller-reject-academy@ringdu.com");
-        User teacher = saveUser("controller-reject-teacher@ringdu.com", Role.TEACHER);
+        User teacher = saveUser("controller-reject-teacher@ringdu.com", "010-2222-3007", Role.TEACHER);
         Long invitationId = invitationService.createInvitation(
                 academyUserId,
-                invitationRequest(teacher.getEmail())
+                invitationRequest(null, teacher.getPhone())
         ).invitationId();
 
         mockMvc.perform(post("/api/teacher/invitations/{invitationId}/reject", invitationId)
@@ -181,20 +189,20 @@ class AcademyTeacherInvitationControllerTest {
         return jwtTokenProvider.createAccessToken(user);
     }
 
-    private User saveUser(String email, Role role) {
+    private User saveUser(String email, String phone, Role role) {
         return userRepository.save(User.createLocalUser(
                 email,
                 passwordEncoder.encode("password1234"),
                 "테스트 사용자",
-                "010-1234-5678",
+                phone,
                 role
         ));
     }
 
-    private TeacherInvitationCreateRequest invitationRequest(String teacherEmail) {
+    private TeacherInvitationCreateRequest invitationRequest(Long teacherUserId, String teacherPhone) {
         return new TeacherInvitationCreateRequest(
-                teacherEmail,
-                "010-2222-3333",
+                teacherUserId,
+                teacherPhone,
                 "링듀수학학원에 함께해 주세요."
         );
     }
@@ -206,10 +214,15 @@ class AcademyTeacherInvitationControllerTest {
                 "password1234",
                 "링듀수학학원",
                 "홍길동",
-                "010-1234-5678",
+                phoneFor(email),
                 "06123",
                 "서울시 강남구 테헤란로",
                 "101호"
         );
+    }
+
+    private String phoneFor(String seed) {
+        int suffix = Math.abs(seed.hashCode() % 9000) + 1000;
+        return "010-1234-" + suffix;
     }
 }
