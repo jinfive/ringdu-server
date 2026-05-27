@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +25,7 @@ public class AdminAcademyAccountService {
     @Transactional
     public AcademyAccountResponse createAcademyAccount(CreateAcademyAccountRequest request) {
         validateDuplicatedEmail(request.email());
+        validateDuplicatedPhone(request.phone());
 
         User academyUser = User.createLocalUser(
                 request.email(),
@@ -42,6 +44,12 @@ public class AdminAcademyAccountService {
     private void validateDuplicatedEmail(String email) {
         if (userRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.DUPLICATED_EMAIL);
+        }
+    }
+
+    private void validateDuplicatedPhone(String phone) {
+        if (StringUtils.hasText(phone) && userRepository.existsByPhone(phone)) {
+            throw new BusinessException(ErrorCode.DUPLICATED_PHONE);
         }
     }
 }

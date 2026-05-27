@@ -74,6 +74,31 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("전화번호가 중복되면 일반 회원가입에 실패한다")
+    void throwExceptionWhenPhoneDuplicated() {
+        authService.signup(signupRequestWithPhone("phone-duplicated-1@ringdu.com", "010-9999-0000", Role.TEACHER));
+
+        assertThatThrownBy(() -> authService.signup(signupRequestWithPhone(
+                "phone-duplicated-2@ringdu.com",
+                "010-9999-0000",
+                Role.PARENT
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_PHONE);
+    }
+
+    @Test
+    @DisplayName("전화번호가 null이면 중복 검사 실패로 처리하지 않는다")
+    void doNotThrowDuplicatedPhoneWhenPhoneNull() {
+        authService.signup(signupRequestWithPhone("null-phone-1@ringdu.com", null, Role.TEACHER));
+
+        SignupResponse response = authService.signup(signupRequestWithPhone("null-phone-2@ringdu.com", null, Role.STUDENT));
+
+        assertThat(response.email()).isEqualTo("null-phone-2@ringdu.com");
+    }
+
+    @Test
     @DisplayName("같은 이메일과 같은 비밀번호로 다시 가입해도 실패한다")
     void throwExceptionWhenSameEmailAndSamePasswordSignupAgain() {
         authService.signup(signupRequest("same-password@ringdu.com", "password123", Role.TEACHER));
@@ -176,6 +201,20 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
+    }
+
+    @Test
+    @DisplayName("중복 전화번호로 학원 가입 신청할 수 없다")
+    void throwExceptionWhenAcademySignupPhoneDuplicated() {
+        authService.signup(signupRequestWithPhone("academy-phone-owner@ringdu.com", "010-8888-0000", Role.PARENT));
+
+        assertThatThrownBy(() -> authService.signupAcademy(academySignupRequest(
+                "duplicated-academy-phone@ringdu.com",
+                "010-8888-0000"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_PHONE);
     }
 
     @Test
@@ -320,25 +359,37 @@ class AuthServiceTest {
         return signupRequest(email, "password123", role);
     }
 
+    private SignupRequest signupRequestWithPhone(String email, String phone, Role role) {
+        return signupRequest(email, "password123", phone, role);
+    }
+
     private SignupRequest signupRequest(String email, String password, Role role) {
+        return signupRequest(email, password, "010-1234-5678", role);
+    }
+
+    private SignupRequest signupRequest(String email, String password, String phone, Role role) {
         return new SignupRequest(
                 email,
                 password,
                 password,
                 "홍길동",
-                "010-1234-5678",
+                phone,
                 role
         );
     }
 
     private AcademySignupRequest academySignupRequest(String email) {
+        return academySignupRequest(email, "010-1234-5678");
+    }
+
+    private AcademySignupRequest academySignupRequest(String email, String phone) {
         return new AcademySignupRequest(
                 email,
                 "password1234",
                 "password1234",
                 "링듀수학학원",
                 "홍길동",
-                "010-1234-5678",
+                phone,
                 "06123",
                 "서울시 강남구 테헤란로",
                 "101호"

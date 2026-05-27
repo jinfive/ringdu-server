@@ -23,7 +23,9 @@ import lombok.NoArgsConstructor;
                 @UniqueConstraint(name = "uk_users_email", columnNames = "email")
         },
         indexes = {
-                @Index(name = "idx_users_provider_provider_id", columnList = "provider, provider_id")
+                @Index(name = "idx_users_provider_provider_id", columnList = "provider, provider_id"),
+                @Index(name = "idx_users_role_email", columnList = "role, email"),
+                @Index(name = "idx_users_role_phone", columnList = "role, phone")
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

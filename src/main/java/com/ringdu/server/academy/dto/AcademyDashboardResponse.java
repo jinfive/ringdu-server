@@ -11,12 +11,12 @@ public record AcademyDashboardResponse(
 ) {
 
     public static AcademyDashboardResponse empty() {
-        return of(0);
+        return of(0, 0);
     }
 
-    public static AcademyDashboardResponse of(long teacherCount) {
+    public static AcademyDashboardResponse of(long studentCount, long teacherCount) {
         return new AcademyDashboardResponse(
-                0,
+                Math.toIntExact(studentCount),
                 Math.toIntExact(teacherCount),
                 0,
                 0,
