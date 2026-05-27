@@ -7,6 +7,7 @@ import com.ringdu.server.academy.entity.Academy;
 import com.ringdu.server.academy.entity.AcademySignupApplication;
 import com.ringdu.server.academy.repository.AcademyMemberRepository;
 import com.ringdu.server.academy.repository.AcademyRepository;
+import com.ringdu.server.student.repository.StudentProfileRepository;
 import com.ringdu.server.global.exception.BusinessException;
 import com.ringdu.server.global.exception.ErrorCode;
 import com.ringdu.server.user.entity.Role;
@@ -23,6 +24,7 @@ public class AcademyService {
     private final AcademyRepository academyRepository;
     private final UserRepository userRepository;
     private final AcademyMemberRepository academyMemberRepository;
+    private final StudentProfileRepository studentProfileRepository;
 
     @Transactional
     public Academy createFromSignupApplication(AcademySignupApplication application) {
@@ -73,7 +75,9 @@ public class AcademyService {
     @Transactional(readOnly = true)
     public AcademyDashboardResponse getMyDashboard(Long userId) {
         Academy academy = getAcademyForUser(userId);
-        return AcademyDashboardResponse.of(academyMemberRepository.countByAcademyId(academy.getId()));
+        long studentCount = studentProfileRepository.countByAcademyId(academy.getId());
+        long teacherCount = academyMemberRepository.countByAcademyId(academy.getId());
+        return AcademyDashboardResponse.of(studentCount, teacherCount);
     }
 
     private Academy getAcademyForUser(Long userId) {

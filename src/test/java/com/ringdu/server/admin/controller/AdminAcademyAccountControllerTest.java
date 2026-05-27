@@ -47,12 +47,12 @@ class AdminAcademyAccountControllerTest {
     @Test
     @DisplayName("ADMIN은 ACADEMY 계정을 생성할 수 있다")
     void adminCanCreateAcademyAccount() throws Exception {
-        String token = accessToken(saveUser("admin-create@ringdu.com", Role.ADMIN));
+        String token = accessToken(saveUser("admin-create@ringdu.com", "010-9000-0001", Role.ADMIN));
 
         mockMvc.perform(post("/api/admin/academy-accounts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request("new-academy@ringdu.com"))))
+                        .content(objectMapper.writeValueAsString(request("new-academy@ringdu.com", "010-9000-0002"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.email").value("new-academy@ringdu.com"))
@@ -72,25 +72,25 @@ class AdminAcademyAccountControllerTest {
     @EnumSource(value = Role.class, names = {"ACADEMY", "TEACHER", "PARENT", "STUDENT"})
     @DisplayName("ADMIN이 아닌 사용자는 ACADEMY 계정을 생성할 수 없다")
     void nonAdminCannotCreateAcademyAccount(Role role) throws Exception {
-        String token = accessToken(saveUser(role.name().toLowerCase() + "-create@ringdu.com", role));
+        String token = accessToken(saveUser(role.name().toLowerCase() + "-create@ringdu.com", "010-9000-00" + role.ordinal(), role));
 
         mockMvc.perform(post("/api/admin/academy-accounts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request(role.name().toLowerCase() + "-academy@ringdu.com"))))
+                        .content(objectMapper.writeValueAsString(request(role.name().toLowerCase() + "-academy@ringdu.com", "010-9001-00" + role.ordinal()))))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     @DisplayName("중복 이메일로 ACADEMY 계정을 생성할 수 없다")
     void duplicatedEmailCannotCreateAcademyAccount() throws Exception {
-        String token = accessToken(saveUser("admin-duplicate@ringdu.com", Role.ADMIN));
-        saveUser("duplicated-create@ringdu.com", Role.TEACHER);
+        String token = accessToken(saveUser("admin-duplicate@ringdu.com", "010-9000-0010", Role.ADMIN));
+        saveUser("duplicated-create@ringdu.com", "010-9000-0011", Role.TEACHER);
 
         mockMvc.perform(post("/api/admin/academy-accounts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request("duplicated-create@ringdu.com"))))
+                        .content(objectMapper.writeValueAsString(request("duplicated-create@ringdu.com", "010-9000-0012"))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false));
     }
@@ -100,21 +100,29 @@ class AdminAcademyAccountControllerTest {
     }
 
     private User saveUser(String email, Role role) {
+        return saveUser(email, "010-1234-5678", role);
+    }
+
+    private User saveUser(String email, String phone, Role role) {
         return userRepository.save(User.createLocalUser(
                 email,
                 passwordEncoder.encode("password1234"),
                 "테스트 사용자",
-                "010-1234-5678",
+                phone,
                 role
         ));
     }
 
     private CreateAcademyAccountRequest request(String email) {
+        return request(email, "010-1234-5678");
+    }
+
+    private CreateAcademyAccountRequest request(String email, String phone) {
         return new CreateAcademyAccountRequest(
                 email,
                 "password1234",
                 "링듀수학학원",
-                "010-1234-5678"
+                phone
         );
     }
 }

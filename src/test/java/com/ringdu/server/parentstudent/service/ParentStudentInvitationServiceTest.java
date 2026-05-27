@@ -68,6 +68,40 @@ class ParentStudentInvitationServiceTest {
     }
 
     @Test
+    @DisplayName("PARENT는 email 없이 studentPhone만으로 STUDENT에게 초대장을 생성할 수 있다")
+    void parentCanInviteStudentByPhoneOnly() {
+        User parent = saveUser("phone-only-parent@ringdu.com", "010-1000-0001", Role.PARENT);
+        User student = saveUser("phone-only-student@ringdu.com", "010-1000-0002", Role.STUDENT);
+
+        var response = invitationService.createStudentInvitation(
+                parent.getId(),
+                new ParentStudentInvitationCreateRequest(null, student.getPhone(), "자녀 연결 요청입니다.")
+        );
+
+        assertThat(response.receiverEmail()).isEqualTo(student.getEmail());
+        assertThat(response.receiverPhone()).isEqualTo(student.getPhone());
+        assertThat(response.studentUserId()).isEqualTo(student.getId());
+        assertThat(response.status()).isEqualTo(ParentStudentInvitationStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("STUDENT는 email 없이 parentPhone만으로 PARENT에게 초대장을 생성할 수 있다")
+    void studentCanInviteParentByPhoneOnly() {
+        User student = saveUser("phone-only-student-requester@ringdu.com", "010-1000-0011", Role.STUDENT);
+        User parent = saveUser("phone-only-parent-receiver@ringdu.com", "010-1000-0012", Role.PARENT);
+
+        var response = invitationService.createParentInvitation(
+                student.getId(),
+                new StudentParentInvitationCreateRequest(null, parent.getPhone(), "보호자 연결 요청입니다.")
+        );
+
+        assertThat(response.receiverEmail()).isEqualTo(parent.getEmail());
+        assertThat(response.receiverPhone()).isEqualTo(parent.getPhone());
+        assertThat(response.parentUserId()).isEqualTo(parent.getId());
+        assertThat(response.status()).isEqualTo(ParentStudentInvitationStatus.PENDING);
+    }
+
+    @Test
     @DisplayName("PARENT/STUDENT 외 role은 초대장을 생성할 수 없다")
     void nonParentStudentCannotCreateInvitation() {
         User teacher = saveUser("teacher-cannot-parent-student-invite@ringdu.com", Role.TEACHER);
@@ -181,11 +215,15 @@ class ParentStudentInvitationServiceTest {
     }
 
     private User saveUser(String email, Role role) {
+        return saveUser(email, "010-1234-5678", role);
+    }
+
+    private User saveUser(String email, String phone, Role role) {
         return userRepository.save(User.createLocalUser(
                 email,
                 passwordEncoder.encode("password1234"),
                 "테스트 사용자",
-                "010-1234-5678",
+                phone,
                 role
         ));
     }

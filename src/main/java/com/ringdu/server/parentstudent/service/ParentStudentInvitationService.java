@@ -13,14 +13,17 @@ import com.ringdu.server.parentstudent.repository.ParentStudentInvitationReposit
 import com.ringdu.server.parentstudent.repository.ParentStudentRelationRepository;
 import com.ringdu.server.user.entity.Role;
 import com.ringdu.server.user.entity.User;
+import com.ringdu.server.user.entity.UserStatus;
 import com.ringdu.server.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -38,20 +41,24 @@ public class ParentStudentInvitationService {
             ParentStudentInvitationCreateRequest request
     ) {
         User parent = getUserWithRole(parentUserId, Role.PARENT);
-        String studentEmail = normalizeEmail(request.studentEmail());
-        Long studentUserId = userRepository.findByEmail(studentEmail)
+        String studentEmail = normalizeOptionalEmail(request.studentEmail());
+        String studentPhone = normalizePhone(request.studentPhone());
+        Optional<User> studentUser = findReceiverUser(studentPhone, studentEmail, Role.STUDENT);
+        Long studentUserId = studentUser
                 .map(student -> {
-                    validateRole(student, Role.STUDENT);
                     validateNotConnected(parent.getId(), student.getId());
                     return student.getId();
                 })
                 .orElse(null);
+        String receiverEmail = studentUser.map(User::getEmail)
+                .map(this::normalizeOptionalEmail)
+                .orElse(studentEmail);
 
-        validateNoPendingInvitation(parent.getId(), studentEmail);
+        validateNoPendingInvitation(parent.getId(), receiverEmail, studentPhone);
         ParentStudentInvitation invitation = ParentStudentInvitation.create(
                 parent.getId(),
-                studentEmail,
-                request.studentPhone().trim(),
+                receiverEmail,
+                studentPhone,
                 Role.PARENT,
                 Role.STUDENT,
                 studentUserId,
@@ -69,20 +76,24 @@ public class ParentStudentInvitationService {
             StudentParentInvitationCreateRequest request
     ) {
         User student = getUserWithRole(studentUserId, Role.STUDENT);
-        String parentEmail = normalizeEmail(request.parentEmail());
-        Long parentUserId = userRepository.findByEmail(parentEmail)
+        String parentEmail = normalizeOptionalEmail(request.parentEmail());
+        String parentPhone = normalizePhone(request.parentPhone());
+        Optional<User> parentUser = findReceiverUser(parentPhone, parentEmail, Role.PARENT);
+        Long parentUserId = parentUser
                 .map(parent -> {
-                    validateRole(parent, Role.PARENT);
                     validateNotConnected(parent.getId(), student.getId());
                     return parent.getId();
                 })
                 .orElse(null);
+        String receiverEmail = parentUser.map(User::getEmail)
+                .map(this::normalizeOptionalEmail)
+                .orElse(parentEmail);
 
-        validateNoPendingInvitation(student.getId(), parentEmail);
+        validateNoPendingInvitation(student.getId(), receiverEmail, parentPhone);
         ParentStudentInvitation invitation = ParentStudentInvitation.create(
                 student.getId(),
-                parentEmail,
-                request.parentPhone().trim(),
+                receiverEmail,
+                parentPhone,
                 Role.STUDENT,
                 Role.PARENT,
                 student.getId(),
@@ -97,12 +108,19 @@ public class ParentStudentInvitationService {
     @Transactional(readOnly = true)
     public List<ParentStudentInvitationResponse> getMyInvitations(Long userId, Role role) {
         User user = getUserWithRole(userId, role);
-        String email = normalizeEmail(user.getEmail());
+        String email = normalizeOptionalEmail(user.getEmail());
+        String phone = normalizeOptionalPhone(user.getPhone());
 
-        List<ParentStudentInvitation> received = invitationRepository.findAllByReceiverEmailOrderByCreatedAtDesc(email);
+        List<ParentStudentInvitation> receivedByEmail = StringUtils.hasText(email)
+                ? invitationRepository.findAllByReceiverEmailOrderByCreatedAtDesc(email)
+                : List.of();
+        List<ParentStudentInvitation> receivedByPhone = StringUtils.hasText(phone)
+                ? invitationRepository.findAllByReceiverPhoneOrderByCreatedAtDesc(phone)
+                : List.of();
         List<ParentStudentInvitation> sent = invitationRepository.findAllByRequesterUserIdOrderByCreatedAtDesc(userId);
 
-        return java.util.stream.Stream.concat(received.stream(), sent.stream())
+        return java.util.stream.Stream.of(receivedByEmail, receivedByPhone, sent)
+                .flatMap(List::stream)
                 .distinct()
                 .sorted(Comparator
                         .comparing((ParentStudentInvitation invitation) -> !invitation.isPending())
@@ -182,7 +200,12 @@ public class ParentStudentInvitationService {
 
     private void validateReceiver(ParentStudentInvitation invitation, User receiver) {
         validateRole(receiver, invitation.getTargetRole());
-        if (!invitation.getReceiverEmail().equals(normalizeEmail(receiver.getEmail()))) {
+        boolean emailMatches = StringUtils.hasText(invitation.getReceiverEmail())
+                && invitation.getReceiverEmail().equals(normalizeOptionalEmail(receiver.getEmail()));
+        boolean phoneMatches = StringUtils.hasText(invitation.getReceiverPhone())
+                && invitation.getReceiverPhone().equals(normalizeOptionalPhone(receiver.getPhone()));
+
+        if (!emailMatches && !phoneMatches) {
             throw new BusinessException(ErrorCode.PARENT_STUDENT_INVITATION_EMAIL_MISMATCH);
         }
     }
@@ -193,12 +216,21 @@ public class ParentStudentInvitationService {
         }
     }
 
-    private void validateNoPendingInvitation(Long requesterUserId, String receiverEmail) {
-        if (invitationRepository.existsByRequesterUserIdAndReceiverEmailAndStatus(
-                requesterUserId,
-                receiverEmail,
-                ParentStudentInvitationStatus.PENDING
-        )) {
+    private void validateNoPendingInvitation(Long requesterUserId, String receiverEmail, String receiverPhone) {
+        boolean duplicatedByEmail = StringUtils.hasText(receiverEmail)
+                && invitationRepository.existsByRequesterUserIdAndReceiverEmailAndStatus(
+                        requesterUserId,
+                        receiverEmail,
+                        ParentStudentInvitationStatus.PENDING
+                );
+        boolean duplicatedByPhone = StringUtils.hasText(receiverPhone)
+                && invitationRepository.existsByRequesterUserIdAndReceiverPhoneAndStatus(
+                        requesterUserId,
+                        receiverPhone,
+                        ParentStudentInvitationStatus.PENDING
+                );
+
+        if (duplicatedByEmail || duplicatedByPhone) {
             throw new BusinessException(ErrorCode.PARENT_STUDENT_INVITATION_ALREADY_EXISTS);
         }
     }
@@ -210,8 +242,40 @@ public class ParentStudentInvitationService {
         return ParentStudentInvitationResponse.from(invitation, requesterName, currentUserId);
     }
 
-    private String normalizeEmail(String email) {
+    private Optional<User> findReceiverUser(String phone, String email, Role role) {
+        if (StringUtils.hasText(phone)) {
+            Optional<User> byPhone = userRepository.findByPhoneAndRoleAndStatus(phone, role, UserStatus.ACTIVE);
+            if (byPhone.isPresent()) {
+                return byPhone;
+            }
+        }
+
+        if (StringUtils.hasText(email)) {
+            return userRepository.findByEmailAndRoleAndStatus(email, role, UserStatus.ACTIVE);
+        }
+
+        return Optional.empty();
+    }
+
+    private String normalizeOptionalEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return null;
+        }
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizePhone(String phone) {
+        if (!StringUtils.hasText(phone)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return phone.trim();
+    }
+
+    private String normalizeOptionalPhone(String phone) {
+        if (!StringUtils.hasText(phone)) {
+            return null;
+        }
+        return phone.trim();
     }
 
     private String normalizeMessage(String message, String defaultMessage) {

@@ -13,7 +13,15 @@ public interface ParentStudentInvitationRepository extends JpaRepository<ParentS
             ParentStudentInvitationStatus status
     );
 
+    boolean existsByRequesterUserIdAndReceiverPhoneAndStatus(
+            Long requesterUserId,
+            String receiverPhone,
+            ParentStudentInvitationStatus status
+    );
+
     List<ParentStudentInvitation> findAllByReceiverEmailOrderByCreatedAtDesc(String receiverEmail);
+
+    List<ParentStudentInvitation> findAllByReceiverPhoneOrderByCreatedAtDesc(String receiverPhone);
 
     List<ParentStudentInvitation> findAllByRequesterUserIdOrderByCreatedAtDesc(Long requesterUserId);
 }

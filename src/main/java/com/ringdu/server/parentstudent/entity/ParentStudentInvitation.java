@@ -25,6 +25,7 @@ import lombok.NoArgsConstructor;
         indexes = {
                 @Index(name = "idx_parent_student_invitations_requester_user_id", columnList = "requester_user_id"),
                 @Index(name = "idx_parent_student_invitations_receiver_email", columnList = "receiver_email"),
+                @Index(name = "idx_parent_student_invitations_receiver_phone", columnList = "receiver_phone"),
                 @Index(name = "idx_parent_student_invitations_status", columnList = "status"),
                 @Index(name = "idx_parent_student_invitations_parent_user_id", columnList = "parent_user_id"),
                 @Index(name = "idx_parent_student_invitations_student_user_id", columnList = "student_user_id")
@@ -40,7 +41,7 @@ public class ParentStudentInvitation extends BaseEntity {
     @Column(nullable = false)
     private Long requesterUserId;
 
-    @Column(nullable = false, length = 100)
+    @Column(length = 100)
     private String receiverEmail;
 
     @Column(nullable = false, length = 30)

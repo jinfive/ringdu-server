@@ -66,12 +66,30 @@ class AdminAcademyAccountServiceTest {
                 .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
     }
 
+    @Test
+    @DisplayName("중복 전화번호로 ACADEMY 계정을 생성할 수 없다")
+    void throwExceptionWhenDuplicatedPhone() {
+        adminAcademyAccountService.createAcademyAccount(request("phone-source-academy@ringdu.com", "010-7777-0000"));
+
+        assertThatThrownBy(() -> adminAcademyAccountService.createAcademyAccount(request(
+                "phone-duplicated-academy@ringdu.com",
+                "010-7777-0000"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATED_PHONE);
+    }
+
     private CreateAcademyAccountRequest request(String email) {
+        return request(email, "010-1234-5678");
+    }
+
+    private CreateAcademyAccountRequest request(String email, String phone) {
         return new CreateAcademyAccountRequest(
                 email,
                 "password1234",
                 "링듀수학학원",
-                "010-1234-5678"
+                phone
         );
     }
 }
