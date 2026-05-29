@@ -62,6 +62,7 @@ Ringdu는 `ADMIN`, `OWNER`, `DESK`, `TEACHER`, `PARENT`, `STUDENT` 권한이 분
 | `auth-design.md` | 인증 흐름 설계 |
 | `authorization-design.md` | 권한과 접근 제어 설계 |
 | `academy-design.md` | 학원 도메인 설계 |
+| `academy-schedule.md` | 학원 시간표와 강의실/수업 API 설계 |
 | `student-design.md` | 학생 도메인 설계 |
 | `attendance-design.md` | 출석 관리 설계 |
 | `homework-design.md` | 숙제 관리 설계 |
@@ -518,5 +519,4 @@ AI 에이전트가 설계 관련 작업을 할 때는 다음을 따른다.
 * 설계 문서는 선택 이유와 대안을 남겨야 한다.
 * 실행 계획은 설계 이후에 작성한다.
 * 설계와 실제 구현이 달라지면 문서를 갱신한다.
-
 
