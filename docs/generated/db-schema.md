@@ -146,6 +146,9 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | `parent_student_invitations` | 부모-학생 연결 초대장 | 사용 |
 | `parent_student_relations` | 부모-학생 연결 관계 | 사용 |
 | `student_profiles` | 학생 프로필 정보 | 사용 |
+| `academy_classrooms` | 학원 강의실 정보 | 사용 |
+| `academy_classes` | 학원 수업 시간표 정보 | 사용 |
+| `academy_class_students` | 수업과 학생 매핑 | 사용 |
 | `academy_students` | 학원과 학생 소속 관계 | 예정 |
 | `attendance_records` | 출석 기록 | 예정 |
 | `homework_assignments` | 숙제 등록 정보 | 예정 |
@@ -209,6 +212,129 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 - `status` 값은 `ACTIVE`, `INACTIVE`, `GRADUATED`를 사용한다.
 - `user_id`는 학생이 직접 가입 후 연결될 때 채워진다.
 - `guardian_phone`은 학원 연락용으로만 사용되며, 부모 계정 연결은 `parent_student_relations`를 따른다.
+
+---
+
+## academy_classrooms
+
+### 설명
+
+학원 시간표에서 열(column)로 사용하는 강의실 정보를 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
+|---|---|---:|---|---|
+| id | bigint | No | auto increment | 강의실 ID |
+| academy_id | bigint | No |  | 학원 ID |
+| name | varchar(50) | No |  | 강의실 이름 |
+| status | varchar(20) | No | `ACTIVE` | 강의실 상태 |
+| display_order | integer | No |  | 표시 순서 |
+| created_at | timestamp | No | current timestamp | 생성 일시 |
+| updated_at | timestamp | No | current timestamp | 수정 일시 |
+
+### 제약조건
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| pk_academy_classrooms | id | Primary Key | 강의실 기본 키 |
+| uk_academy_classrooms_academy_name | academy_id, name | Unique | 학원 내 강의실 이름 중복 방지 |
+
+### 인덱스
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| idx_academy_classrooms_academy_display_order | academy_id, display_order | Index | 학원별 표시 순서 조회 |
+| idx_academy_classrooms_academy_status | academy_id, status | Index | 학원별 활성 강의실 조회 |
+
+### 비고
+
+- 삭제는 물리 삭제보다 `INACTIVE` 비활성화를 사용한다.
+
+---
+
+## academy_classes
+
+### 설명
+
+학원 수업 시간표 정보를 저장한다. 시간표 UI에서는 요일을 탭/선택값으로 사용하고, 강의실을 열, 시간을 행으로 사용한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
+|---|---|---:|---|---|
+| id | bigint | No | auto increment | 수업 ID |
+| academy_id | bigint | No |  | 학원 ID |
+| classroom_id | bigint | No |  | 강의실 ID |
+| teacher_user_id | bigint | Yes |  | 담당 선생님 사용자 ID |
+| name | varchar(100) | No |  | 수업명 |
+| day_of_week | varchar(20) | No |  | 수업 요일 |
+| start_time | time | No |  | 시작 시간 |
+| end_time | time | No |  | 종료 시간 |
+| memo | text | Yes |  | 메모 |
+| status | varchar(20) | No | `ACTIVE` | 수업 상태 |
+| created_at | timestamp | No | current timestamp | 생성 일시 |
+| updated_at | timestamp | No | current timestamp | 수정 일시 |
+
+### 제약조건
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| pk_academy_classes | id | Primary Key | 수업 기본 키 |
+
+### 인덱스
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| idx_academy_classes_academy_day | academy_id, day_of_week | Index | 학원별 요일 수업 조회 |
+| idx_academy_classes_classroom_day_time | academy_id, classroom_id, day_of_week, start_time, end_time | Index | 강의실/요일/시간 겹침 검증 |
+| idx_academy_classes_status | status | Index | 상태별 수업 조회 |
+
+### 비고
+
+- `day_of_week` 값은 `MONDAY`, `TUESDAY`, `WEDNESDAY`, `THURSDAY`, `FRIDAY`, `SATURDAY`, `SUNDAY`를 사용한다.
+- `start_time < end_time`이어야 한다.
+- 같은 `academy_id + classroom_id + day_of_week`에서 `ACTIVE` 수업 시간이 겹치면 생성/수정할 수 없다.
+- 출석, 숙제, 청구서는 후속 도메인에서 이 수업 ID를 기준으로 확장한다.
+
+---
+
+## academy_class_students
+
+### 설명
+
+수업에 배정된 학생 목록을 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
+|---|---|---:|---|---|
+| id | bigint | No | auto increment | 수업 학생 매핑 ID |
+| academy_class_id | bigint | No |  | 수업 ID |
+| student_profile_id | bigint | No |  | 학생 프로필 ID |
+| status | varchar(20) | No | `ACTIVE` | 수강 상태 |
+| created_at | timestamp | No | current timestamp | 생성 일시 |
+| updated_at | timestamp | No | current timestamp | 수정 일시 |
+
+### 제약조건
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| pk_academy_class_students | id | Primary Key | 수업 학생 매핑 기본 키 |
+| uk_academy_class_students_class_student | academy_class_id, student_profile_id | Unique | 같은 수업에 같은 학생 중복 방지 |
+
+### 인덱스
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| idx_academy_class_students_class_id | academy_class_id | Index | 수업별 학생 조회 |
+| idx_academy_class_students_student_id | student_profile_id | Index | 학생별 수업 조회 |
+| idx_academy_class_students_status | status | Index | 상태별 수강 학생 조회 |
+
+### 비고
+
+- 수강 학생 삭제는 `INACTIVE` 비활성화를 사용한다.
+- 학생은 해당 학원에 등록된 `student_profiles`만 추가할 수 있다.
 
 ---
 
