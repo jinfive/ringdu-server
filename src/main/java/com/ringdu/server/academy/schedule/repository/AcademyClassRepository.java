@@ -31,6 +31,12 @@ public interface AcademyClassRepository extends JpaRepository<AcademyClass, Long
 
     Optional<AcademyClass> findByIdAndAcademyId(Long id, Long academyId);
 
+    List<AcademyClass> findAllByTeacherUserIdAndDayOfWeekAndStatusOrderByStartTimeAscIdAsc(
+            Long teacherUserId,
+            AcademyClassDayOfWeek dayOfWeek,
+            ScheduleStatus status
+    );
+
     @Query("""
             select count(c) > 0
             from AcademyClass c
