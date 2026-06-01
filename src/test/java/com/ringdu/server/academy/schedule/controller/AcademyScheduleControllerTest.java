@@ -290,7 +290,56 @@ class AcademyScheduleControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.studentCount").value(1))
                 .andExpect(jsonPath("$.data.students[0].studentProfileId").value(student.getId()))
-                .andExpect(jsonPath("$.data.students[0].name").value("김학생"));
+                .andExpect(jsonPath("$.data.students[0].name").value("김학생"))
+                .andExpect(jsonPath("$.data.students[0].phone").value("010-0000-0000"))
+                .andExpect(jsonPath("$.data.students[0].guardianPhone").value("010-1111-1111"));
+    }
+
+    @Test
+    @DisplayName("ACADEMY가 자기 학원 학생을 이름으로 검색할 수 있다")
+    void canSearchOwnAcademyStudentsByName() throws Exception {
+        AcademyContext context = academyContext("schedule-search-students@ringdu.com");
+        StudentProfile student = createStudent(context, "김학생");
+        createStudent(context, "이학생");
+
+        mockMvc.perform(get("/api/academies/me/students/search")
+                        .param("keyword", "김")
+                        .header("Authorization", "Bearer " + context.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(student.getId()))
+                .andExpect(jsonPath("$.data[0].name").value("김학생"))
+                .andExpect(jsonPath("$.data[0].school").value("동신중"))
+                .andExpect(jsonPath("$.data[0].grade").value("2"))
+                .andExpect(jsonPath("$.data[0].status").value("ACTIVE"));
+    }
+
+    @Test
+    @DisplayName("학생 이름 검색 결과에 다른 학원 학생은 포함되지 않는다")
+    void searchStudentsExcludesOtherAcademyStudents() throws Exception {
+        AcademyContext owner = academyContext("schedule-search-owner@ringdu.com");
+        AcademyContext other = academyContext("schedule-search-other@ringdu.com");
+        createStudent(owner, "김학생");
+        createStudent(other, "김학생");
+
+        mockMvc.perform(get("/api/academies/me/students/search")
+                        .param("keyword", "김")
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("학생 이름 검색어가 비어 있으면 빈 배열을 반환한다")
+    void searchStudentsBlankKeywordReturnsEmptyList() throws Exception {
+        AcademyContext context = academyContext("schedule-search-blank@ringdu.com");
+        createStudent(context, "김학생");
+
+        mockMvc.perform(get("/api/academies/me/students/search")
+                        .param("keyword", " ")
+                        .header("Authorization", "Bearer " + context.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
@@ -308,6 +357,22 @@ class AcademyScheduleControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.studentCount").value(1))
                 .andExpect(jsonPath("$.data.students[0].name").value("이학생"));
+    }
+
+    @Test
+    @DisplayName("이미 수강 중인 학생은 중복 추가할 수 없다")
+    void cannotAddDuplicateClassStudent() throws Exception {
+        AcademyContext context = academyContext("schedule-add-duplicate-student@ringdu.com");
+        Long classroomId = createClassroom(context, "1강의실");
+        Long classId = createClass(context, "수강 수업", AcademyClassDayOfWeek.MONDAY, classroomId, "16:00", "17:30");
+        StudentProfile student = createStudent(context, "이학생");
+        addStudent(context, classId, student.getId());
+
+        mockMvc.perform(post("/api/academies/me/classes/{classId}/students", classId)
+                        .header("Authorization", "Bearer " + context.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AcademyClassStudentRequest(student.getId()))))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -487,6 +552,8 @@ class AcademyScheduleControllerTest {
                 .name(name)
                 .school("동신중")
                 .grade("2")
+                .phone("010-0000-0000")
+                .guardianPhone("010-1111-1111")
                 .status(StudentStatus.ACTIVE)
                 .build());
     }

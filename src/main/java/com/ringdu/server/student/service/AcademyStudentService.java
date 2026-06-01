@@ -72,6 +72,18 @@ public class AcademyStudentService {
         return studentDetailAssembler.toDetailResponse(profile);
     }
 
+    @Transactional(readOnly = true)
+    public List<AcademyStudentResponse> searchStudents(Long userId, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+
+        Academy academy = getAcademyByUserId(userId);
+        return studentProfileRepository.searchByAcademyIdAndName(academy.getId(), keyword.trim()).stream()
+                .map(studentDetailAssembler::toListResponse)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public AcademyStudentResponse updateStudent(Long userId, Long studentId, AcademyStudentCreateRequest request) {
         Academy academy = getAcademyByUserId(userId);
