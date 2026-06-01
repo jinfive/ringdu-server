@@ -311,6 +311,61 @@ class AcademyScheduleControllerTest {
     }
 
     @Test
+    @DisplayName("학생별 수강 중인 수업 목록을 조회할 수 있다")
+    void canGetStudentClasses() throws Exception {
+        AcademyContext context = academyContext("schedule-student-classes@ringdu.com");
+        Long classroomId = createClassroom(context, "1강의실");
+        Long firstClassId = createClass(context, "수학", AcademyClassDayOfWeek.TUESDAY, classroomId, "16:00", "17:30");
+        createClass(context, "영어", AcademyClassDayOfWeek.WEDNESDAY, classroomId, "18:00", "19:00");
+        StudentProfile student = createStudent(context, "김학생");
+        addStudent(context, firstClassId, student.getId());
+
+        mockMvc.perform(get("/api/academies/me/students/{studentProfileId}/classes", student.getId())
+                        .header("Authorization", "Bearer " + context.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].classId").value(firstClassId))
+                .andExpect(jsonPath("$.data[0].name").value("수학"))
+                .andExpect(jsonPath("$.data[0].dayOfWeek").value("TUESDAY"))
+                .andExpect(jsonPath("$.data[0].dayLabel").value("화"))
+                .andExpect(jsonPath("$.data[0].classroomName").value("1강의실"))
+                .andExpect(jsonPath("$.data[0].startTime").value("16:00"))
+                .andExpect(jsonPath("$.data[0].endTime").value("17:30"))
+                .andExpect(jsonPath("$.data[0].status").value("ACTIVE"));
+    }
+
+    @Test
+    @DisplayName("다른 학원 학생의 수강 수업 목록은 조회할 수 없다")
+    void cannotGetOtherAcademyStudentClasses() throws Exception {
+        AcademyContext owner = academyContext("schedule-student-classes-owner@ringdu.com");
+        AcademyContext other = academyContext("schedule-student-classes-other@ringdu.com");
+        StudentProfile otherStudent = createStudent(other, "다른학생");
+
+        mockMvc.perform(get("/api/academies/me/students/{studentProfileId}/classes", otherStudent.getId())
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("수업에서 제외된 학생의 수강 수업은 조회되지 않는다")
+    void removedClassStudentIsNotListed() throws Exception {
+        AcademyContext context = academyContext("schedule-student-classes-removed@ringdu.com");
+        Long classroomId = createClassroom(context, "1강의실");
+        Long classId = createClass(context, "제외 수업", AcademyClassDayOfWeek.MONDAY, classroomId, "16:00", "17:30");
+        StudentProfile student = createStudent(context, "박학생");
+        addStudent(context, classId, student.getId());
+
+        mockMvc.perform(delete("/api/academies/me/classes/{classId}/students/{studentProfileId}", classId, student.getId())
+                        .header("Authorization", "Bearer " + context.token()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/academies/me/students/{studentProfileId}/classes", student.getId())
+                        .header("Authorization", "Bearer " + context.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
     @DisplayName("다른 학원 학생은 수업에 추가할 수 없다")
     void cannotAddOtherAcademyStudent() throws Exception {
         AcademyContext owner = academyContext("schedule-student-owner@ringdu.com");

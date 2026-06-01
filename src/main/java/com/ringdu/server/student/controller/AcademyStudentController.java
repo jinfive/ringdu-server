@@ -1,5 +1,7 @@
 package com.ringdu.server.student.controller;
 
+import com.ringdu.server.academy.schedule.dto.AcademyClassResponse;
+import com.ringdu.server.academy.schedule.service.AcademyScheduleService;
 import com.ringdu.server.global.common.ApiResponse;
 import com.ringdu.server.global.security.CustomUserPrincipal;
 import com.ringdu.server.student.dto.AcademyStudentCreateRequest;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AcademyStudentController {
 
     private final AcademyStudentService academyStudentService;
+    private final AcademyScheduleService academyScheduleService;
 
     @PostMapping
     @PreAuthorize("hasRole('ACADEMY')")
@@ -49,6 +52,15 @@ public class AcademyStudentController {
             @PathVariable Long studentId
     ) {
         return ApiResponse.success(academyStudentService.getStudent(principal.userId(), studentId));
+    }
+
+    @GetMapping("/{studentId}/classes")
+    @PreAuthorize("hasRole('ACADEMY')")
+    public ApiResponse<List<AcademyClassResponse>> getStudentClasses(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentId
+    ) {
+        return ApiResponse.success(academyScheduleService.getStudentClasses(principal.userId(), studentId));
     }
 
     @PutMapping("/{studentId}")
