@@ -130,6 +130,19 @@ public class AcademyScheduleService {
         return AcademyClassDetailResponse.of(academyClass, classroom, teacher, students);
     }
 
+    @Transactional(readOnly = true)
+    public List<AcademyClassResponse> getStudentClasses(Long userId, Long studentProfileId) {
+        Academy academy = getAcademy(userId);
+        getStudentProfile(academy.getId(), studentProfileId);
+
+        return classStudentRepository.findAllByStudentProfileIdAndStatus(studentProfileId, ScheduleStatus.ACTIVE)
+                .stream()
+                .map(link -> getAcademyClass(academy.getId(), link.getAcademyClassId()))
+                .filter(academyClass -> academyClass.getStatus() == ScheduleStatus.ACTIVE)
+                .map(this::toClassResponse)
+                .toList();
+    }
+
     @Transactional
     public AcademyClassResponse updateClass(Long userId, Long classId, AcademyClassRequest request) {
         Academy academy = getAcademy(userId);

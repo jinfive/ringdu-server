@@ -6,7 +6,9 @@ public record AcademyClassStudentResponse(
         Long studentProfileId,
         String name,
         String school,
-        String grade
+        String grade,
+        String phone,
+        String guardianPhone
 ) {
 
     public static AcademyClassStudentResponse from(StudentProfile studentProfile) {
@@ -14,7 +16,9 @@ public record AcademyClassStudentResponse(
                 studentProfile.getId(),
                 studentProfile.getName(),
                 studentProfile.getSchool(),
-                studentProfile.getGrade()
+                studentProfile.getGrade(),
+                studentProfile.getPhone(),
+                studentProfile.getGuardianPhone()
         );
     }
 }

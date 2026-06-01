@@ -1,5 +1,7 @@
 package com.ringdu.server.student.controller;
 
+import com.ringdu.server.academy.schedule.dto.AcademyClassResponse;
+import com.ringdu.server.academy.schedule.service.AcademyScheduleService;
 import com.ringdu.server.global.common.ApiResponse;
 import com.ringdu.server.global.security.CustomUserPrincipal;
 import com.ringdu.server.student.dto.AcademyStudentCreateRequest;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -24,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AcademyStudentController {
 
     private final AcademyStudentService academyStudentService;
+    private final AcademyScheduleService academyScheduleService;
 
     @PostMapping
     @PreAuthorize("hasRole('ACADEMY')")
@@ -42,6 +46,15 @@ public class AcademyStudentController {
         return ApiResponse.success(academyStudentService.getMyAcademyStudents(principal.userId()));
     }
 
+    @GetMapping("/search")
+    @PreAuthorize("hasRole('ACADEMY')")
+    public ApiResponse<List<AcademyStudentResponse>> searchStudents(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @RequestParam(required = false) String keyword
+    ) {
+        return ApiResponse.success(academyStudentService.searchStudents(principal.userId(), keyword));
+    }
+
     @GetMapping("/{studentId}")
     @PreAuthorize("hasRole('ACADEMY')")
     public ApiResponse<AcademyStudentResponse> getStudent(
@@ -49,6 +62,15 @@ public class AcademyStudentController {
             @PathVariable Long studentId
     ) {
         return ApiResponse.success(academyStudentService.getStudent(principal.userId(), studentId));
+    }
+
+    @GetMapping("/{studentId}/classes")
+    @PreAuthorize("hasRole('ACADEMY')")
+    public ApiResponse<List<AcademyClassResponse>> getStudentClasses(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentId
+    ) {
+        return ApiResponse.success(academyScheduleService.getStudentClasses(principal.userId(), studentId));
     }
 
     @PutMapping("/{studentId}")

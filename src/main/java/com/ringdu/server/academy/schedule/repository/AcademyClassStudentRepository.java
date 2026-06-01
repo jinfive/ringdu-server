@@ -14,6 +14,8 @@ public interface AcademyClassStudentRepository extends JpaRepository<AcademyClas
 
     List<AcademyClassStudent> findAllByAcademyClassIdAndStatus(Long academyClassId, ScheduleStatus status);
 
+    List<AcademyClassStudent> findAllByStudentProfileIdAndStatus(Long studentProfileId, ScheduleStatus status);
+
     Optional<AcademyClassStudent> findByAcademyClassIdAndStudentProfileId(Long academyClassId, Long studentProfileId);
 
     List<AcademyClassStudent> findAllByAcademyClassIdInAndStatus(Collection<Long> academyClassIds, ScheduleStatus status);
