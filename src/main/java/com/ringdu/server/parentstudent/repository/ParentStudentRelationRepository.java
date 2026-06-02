@@ -11,6 +11,12 @@ public interface ParentStudentRelationRepository extends JpaRepository<ParentStu
 
     boolean existsByParentIdAndStudentId(Long parentUserId, Long studentUserId);
 
+    boolean existsByParentIdAndStudentIdAndStatus(
+            Long parentUserId,
+            Long studentUserId,
+            ParentStudentRelationStatus status
+    );
+
     List<ParentStudentRelation> findAllByParentIdOrderByCreatedAtDesc(Long parentUserId);
 
     List<ParentStudentRelation> findAllByStudentIdOrderByCreatedAtDesc(Long studentUserId);
