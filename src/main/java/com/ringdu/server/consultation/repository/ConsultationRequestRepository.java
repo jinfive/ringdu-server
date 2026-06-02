@@ -34,6 +34,7 @@ public interface ConsultationRequestRepository extends JpaRepository<Consultatio
               and (:from is null or request.requestedDate >= :from)
               and (:to is null or request.requestedDate <= :to)
               and (:type is null or request.consultationType = :type)
+              and (:studentProfileId is null or request.studentProfileId = :studentProfileId)
             order by request.createdAt desc, request.id desc
             """)
     List<ConsultationRequest> findAcademyRequests(
@@ -41,6 +42,7 @@ public interface ConsultationRequestRepository extends JpaRepository<Consultatio
             @Param("status") ConsultationRequestStatus status,
             @Param("from") LocalDate from,
             @Param("to") LocalDate to,
-            @Param("type") ConsultationRequestType type
+            @Param("type") ConsultationRequestType type,
+            @Param("studentProfileId") Long studentProfileId
     );
 }

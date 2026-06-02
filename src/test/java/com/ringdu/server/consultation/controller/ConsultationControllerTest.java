@@ -247,7 +247,27 @@ class ConsultationControllerTest {
                         .header("Authorization", "Bearer " + fixture.academyToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].status").value("REQUESTED"));
+                .andExpect(jsonPath("$.data[0].status").value("REQUESTED"))
+                .andExpect(jsonPath("$.data[0].parentPhone").value(fixture.parent().getPhone()));
+    }
+
+    @Test
+    @DisplayName("ACADEMY 상담 요청 목록은 날짜와 학생 프로필로 필터링할 수 있다")
+    void academyCanFilterConsultationRequestsByDateAndStudent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-filter@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 17);
+        createRequest(fixture, monday(), 14, 15);
+        createRequest(fixture, monday().plusWeeks(1), 15, 16);
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("from", monday().toString())
+                        .queryParam("to", monday().toString())
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()))
+                .andExpect(jsonPath("$.data[0].requestedDate").value(monday().toString()));
     }
 
     @Test
