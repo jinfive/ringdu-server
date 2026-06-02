@@ -252,8 +252,8 @@ class ConsultationControllerTest {
     }
 
     @Test
-    @DisplayName("ACADEMY 상담 요청 목록은 날짜와 학생 프로필로 필터링할 수 있다")
-    void academyCanFilterConsultationRequestsByDateAndStudent() throws Exception {
+    @DisplayName("ACADEMY 상담 요청 목록은 from/to 날짜로 필터링할 수 있다")
+    void academyCanFilterConsultationRequestsByDateRange() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-academy-filter@ringdu.com");
         createAvailability(fixture, DayOfWeek.MONDAY, 14, 17);
         createRequest(fixture, monday(), 14, 15);
@@ -268,6 +268,52 @@ class ConsultationControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()))
                 .andExpect(jsonPath("$.data[0].requestedDate").value(monday().toString()));
+    }
+
+    @Test
+    @DisplayName("ACADEMY 상담 요청 목록은 from 또는 to 단독 날짜 필터로 조회할 수 있다")
+    void academyCanFilterConsultationRequestsBySingleDateBoundary() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-single-date-filter@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 17);
+        createRequest(fixture, monday(), 14, 15);
+        createRequest(fixture, monday().plusWeeks(1), 15, 16);
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("from", monday().plusWeeks(1).toString())
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].requestedDate").value(monday().plusWeeks(1).toString()));
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("to", monday().toString())
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].requestedDate").value(monday().toString()));
+    }
+
+    @Test
+    @DisplayName("ACADEMY 상담 요청 목록은 status와 studentProfileId로 필터링할 수 있다")
+    void academyCanFilterConsultationRequestsByStatusAndStudent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-status-student-filter@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 17);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "확인했습니다."))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("status", "APPROVED")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].status").value("APPROVED"))
+                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()));
     }
 
     @Test
