@@ -12,9 +12,12 @@ import com.ringdu.server.academy.schedule.repository.AcademyClassStudentReposito
 import com.ringdu.server.academy.schedule.repository.AcademyClassroomRepository;
 import com.ringdu.server.attendance.dto.AcademyAttendanceSessionSummaryResponse;
 import com.ringdu.server.attendance.dto.AcademyStudentAttendanceRecordResponse;
+import com.ringdu.server.attendance.dto.AttendanceAcademyOptionResponse;
 import com.ringdu.server.attendance.dto.AttendanceRecordResponse;
 import com.ringdu.server.attendance.dto.AttendanceRecordSaveRequest;
 import com.ringdu.server.attendance.dto.AttendanceSessionDetailResponse;
+import com.ringdu.server.attendance.dto.ParentChildAttendanceRecordResponse;
+import com.ringdu.server.attendance.dto.StudentAttendanceRecordResponse;
 import com.ringdu.server.attendance.dto.TeacherTodayClassResponse;
 import com.ringdu.server.attendance.entity.AttendanceRecord;
 import com.ringdu.server.attendance.entity.AttendanceRecordStatus;
@@ -23,10 +26,14 @@ import com.ringdu.server.attendance.repository.AttendanceRecordRepository;
 import com.ringdu.server.attendance.repository.AttendanceSessionRepository;
 import com.ringdu.server.global.exception.BusinessException;
 import com.ringdu.server.global.exception.ErrorCode;
+import com.ringdu.server.parentstudent.entity.ParentStudentRelationStatus;
+import com.ringdu.server.parentstudent.repository.ParentStudentRelationRepository;
 import com.ringdu.server.student.entity.StudentProfile;
 import com.ringdu.server.student.repository.StudentProfileRepository;
+import com.ringdu.server.student.entity.StudentStatus;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -48,6 +55,7 @@ public class AttendanceService {
     private final StudentProfileRepository studentProfileRepository;
     private final AttendanceSessionRepository sessionRepository;
     private final AttendanceRecordRepository recordRepository;
+    private final ParentStudentRelationRepository parentStudentRelationRepository;
 
     @Transactional(readOnly = true)
     public List<TeacherTodayClassResponse> getTeacherTodayClasses(Long teacherUserId) {
@@ -167,6 +175,58 @@ public class AttendanceService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<AttendanceAcademyOptionResponse> getStudentAcademies(Long studentUserId) {
+        List<StudentProfile> profiles = getActiveStudentProfiles(studentUserId);
+        return toAcademyOptions(profiles);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StudentAttendanceRecordResponse> getStudentAttendanceRecords(
+            Long studentUserId,
+            Long academyId,
+            Integer year,
+            Integer month
+    ) {
+        List<StudentProfile> profiles = getActiveStudentProfiles(studentUserId)
+                .stream()
+                .filter(profile -> academyId == null || academyId.equals(profile.getAcademyId()))
+                .toList();
+        DateRange range = dateRange(year, month);
+        return profiles.stream()
+                .flatMap(profile -> getFilteredRecords(profile, range, academyId)
+                        .stream()
+                        .map(this::toStudentAttendanceResponse))
+                .sorted(Comparator.comparing(StudentAttendanceRecordResponse::attendanceDate).reversed())
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AttendanceAcademyOptionResponse> getParentChildAcademies(Long parentUserId, Long studentProfileId) {
+        StudentProfile profile = getParentChildProfile(parentUserId, studentProfileId);
+        return toAcademyOptions(List.of(profile));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ParentChildAttendanceRecordResponse> getParentChildAttendanceRecords(
+            Long parentUserId,
+            Long studentProfileId,
+            Long academyId,
+            Integer year,
+            Integer month
+    ) {
+        StudentProfile profile = getParentChildProfile(parentUserId, studentProfileId);
+        if (academyId != null && !academyId.equals(profile.getAcademyId())) {
+            return List.of();
+        }
+        DateRange range = dateRange(year, month);
+        return getFilteredRecords(profile, range, academyId)
+                .stream()
+                .map(recordContext -> toParentChildAttendanceResponse(profile, recordContext))
+                .sorted(Comparator.comparing(ParentChildAttendanceRecordResponse::attendanceDate).reversed())
+                .toList();
+    }
+
     private AttendanceSessionDetailResponse toDetailResponse(AttendanceSession session, AcademyClass academyClass) {
         List<AttendanceRecordResponse> records = recordRepository.findAllByAttendanceSessionIdOrderByIdAsc(session.getId())
                 .stream()
@@ -194,6 +254,117 @@ public class AttendanceService {
     private Academy getAcademy(Long userId) {
         return academyRepository.findByUserId(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACADEMY_NOT_FOUND));
+    }
+
+    private List<StudentProfile> getActiveStudentProfiles(Long studentUserId) {
+        return studentProfileRepository.findAllByUserIdAndStatus(studentUserId, StudentStatus.ACTIVE);
+    }
+
+    private StudentProfile getParentChildProfile(Long parentUserId, Long studentProfileId) {
+        StudentProfile profile = studentProfileRepository.findById(studentProfileId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STUDENT_NOT_FOUND));
+        if (profile.getStatus() != StudentStatus.ACTIVE || profile.getUserId() == null) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        boolean connected = parentStudentRelationRepository.existsByParentIdAndStudentIdAndStatus(
+                parentUserId,
+                profile.getUserId(),
+                ParentStudentRelationStatus.ACTIVE
+        );
+        if (!connected) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        return profile;
+    }
+
+    private List<AttendanceAcademyOptionResponse> toAcademyOptions(List<StudentProfile> profiles) {
+        if (profiles.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Academy> academyById = academyRepository.findAllById(
+                        profiles.stream().map(StudentProfile::getAcademyId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(Academy::getId, Function.identity()));
+        return profiles.stream()
+                .map(StudentProfile::getAcademyId)
+                .distinct()
+                .map(academyId -> academyById.get(academyId))
+                .filter(academy -> academy != null)
+                .map(academy -> new AttendanceAcademyOptionResponse(academy.getId(), academy.getName()))
+                .toList();
+    }
+
+    private List<RecordContext> getFilteredRecords(StudentProfile profile, DateRange range, Long academyId) {
+        return recordRepository.findAllByStudentProfileIdOrderByIdDesc(profile.getId())
+                .stream()
+                .map(record -> toRecordContext(record, academyId))
+                .filter(context -> context != null)
+                .filter(context -> !context.session().getAttendanceDate().isBefore(range.start()))
+                .filter(context -> !context.session().getAttendanceDate().isAfter(range.end()))
+                .toList();
+    }
+
+    private RecordContext toRecordContext(AttendanceRecord record, Long academyId) {
+        AttendanceSession session = sessionRepository.findById(record.getAttendanceSessionId())
+                .orElse(null);
+        if (session == null || (academyId != null && !academyId.equals(session.getAcademyId()))) {
+            return null;
+        }
+        AcademyClass academyClass = classRepository.findById(session.getAcademyClassId())
+                .orElse(null);
+        Academy academy = academyRepository.findById(session.getAcademyId())
+                .orElse(null);
+        if (academyClass == null || academy == null) {
+            return null;
+        }
+        return new RecordContext(record, session, academyClass, academy);
+    }
+
+    private StudentAttendanceRecordResponse toStudentAttendanceResponse(RecordContext context) {
+        return new StudentAttendanceRecordResponse(
+                context.session().getAttendanceDate(),
+                context.academy().getId(),
+                context.academy().getName(),
+                context.academyClass().getId(),
+                context.academyClass().getName(),
+                context.record().getStatus(),
+                statusLabel(context.record().getStatus()),
+                context.record().getMemo()
+        );
+    }
+
+    private ParentChildAttendanceRecordResponse toParentChildAttendanceResponse(StudentProfile profile, RecordContext context) {
+        return new ParentChildAttendanceRecordResponse(
+                context.session().getAttendanceDate(),
+                profile.getId(),
+                profile.getName(),
+                context.academy().getId(),
+                context.academy().getName(),
+                context.academyClass().getId(),
+                context.academyClass().getName(),
+                context.record().getStatus(),
+                statusLabel(context.record().getStatus()),
+                context.record().getMemo()
+        );
+    }
+
+    private DateRange dateRange(Integer year, Integer month) {
+        if (month != null && (month < 1 || month > 12)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        YearMonth yearMonth = year == null || month == null
+                ? YearMonth.now()
+                : YearMonth.of(year, month);
+        return new DateRange(yearMonth.atDay(1), yearMonth.atEndOfMonth());
+    }
+
+    private String statusLabel(AttendanceRecordStatus status) {
+        return switch (status) {
+            case PRESENT -> "출석";
+            case LATE -> "지각";
+            case ABSENT -> "결석";
+        };
     }
 
     private AttendanceSession getSession(Long sessionId) {
@@ -231,5 +402,16 @@ public class AttendanceService {
 
     private AcademyClassDayOfWeek toAcademyDayOfWeek(DayOfWeek dayOfWeek) {
         return AcademyClassDayOfWeek.valueOf(dayOfWeek.name());
+    }
+
+    private record DateRange(LocalDate start, LocalDate end) {
+    }
+
+    private record RecordContext(
+            AttendanceRecord record,
+            AttendanceSession session,
+            AcademyClass academyClass,
+            Academy academy
+    ) {
     }
 }

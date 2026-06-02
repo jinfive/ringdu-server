@@ -11,6 +11,9 @@ import com.ringdu.server.parentstudent.entity.ParentStudentInvitationStatus;
 import com.ringdu.server.parentstudent.entity.ParentStudentRelation;
 import com.ringdu.server.parentstudent.repository.ParentStudentInvitationRepository;
 import com.ringdu.server.parentstudent.repository.ParentStudentRelationRepository;
+import com.ringdu.server.student.entity.StudentProfile;
+import com.ringdu.server.student.entity.StudentStatus;
+import com.ringdu.server.student.repository.StudentProfileRepository;
 import com.ringdu.server.user.entity.Role;
 import com.ringdu.server.user.entity.User;
 import com.ringdu.server.user.entity.UserStatus;
@@ -19,7 +22,9 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +39,7 @@ public class ParentStudentInvitationService {
     private final ParentStudentInvitationRepository invitationRepository;
     private final ParentStudentRelationRepository relationRepository;
     private final UserRepository userRepository;
+    private final StudentProfileRepository studentProfileRepository;
 
     @Transactional
     public ParentStudentInvitationResponse createStudentInvitation(
@@ -132,9 +138,21 @@ public class ParentStudentInvitationService {
     @Transactional(readOnly = true)
     public List<ParentStudentRelationResponse> getMyChildren(Long parentUserId) {
         getUserWithRole(parentUserId, Role.PARENT);
-        return relationRepository.findAllByParentIdOrderByCreatedAtDesc(parentUserId)
+        List<ParentStudentRelation> relations = relationRepository.findAllByParentIdOrderByCreatedAtDesc(parentUserId);
+        if (relations.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, List<StudentProfile>> profilesByStudentUserId = studentProfileRepository.findAllByUserIdInAndStatus(
+                        relations.stream().map(relation -> relation.getStudent().getId()).toList(),
+                        StudentStatus.ACTIVE
+                )
                 .stream()
-                .map(ParentStudentRelationResponse::from)
+                .collect(Collectors.groupingBy(StudentProfile::getUserId));
+        return relations.stream()
+                .map(relation -> ParentStudentRelationResponse.from(
+                        relation,
+                        profilesByStudentUserId.getOrDefault(relation.getStudent().getId(), List.of())
+                ))
                 .toList();
     }
 
