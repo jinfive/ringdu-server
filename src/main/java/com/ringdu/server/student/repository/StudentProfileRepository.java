@@ -1,6 +1,7 @@
 package com.ringdu.server.student.repository;
 
 import com.ringdu.server.student.entity.StudentProfile;
+import com.ringdu.server.student.entity.StudentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,6 +10,10 @@ import java.util.List;
 
 public interface StudentProfileRepository extends JpaRepository<StudentProfile, Long> {
     List<StudentProfile> findAllByAcademyId(Long academyId);
+
+    List<StudentProfile> findAllByUserIdAndStatus(Long userId, StudentStatus status);
+
+    List<StudentProfile> findAllByUserIdInAndStatus(List<Long> userIds, StudentStatus status);
 
     @Query("""
             select p

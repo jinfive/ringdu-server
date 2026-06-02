@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface AcademyClassStudentRepository extends JpaRepository<AcademyClassStudent, Long> {
 
@@ -19,4 +21,18 @@ public interface AcademyClassStudentRepository extends JpaRepository<AcademyClas
     Optional<AcademyClassStudent> findByAcademyClassIdAndStudentProfileId(Long academyClassId, Long studentProfileId);
 
     List<AcademyClassStudent> findAllByAcademyClassIdInAndStatus(Collection<Long> academyClassIds, ScheduleStatus status);
+
+    @Query("""
+            select link
+            from AcademyClassStudent link
+            join AcademyClass academyClass on academyClass.id = link.academyClassId
+            where link.studentProfileId = :studentProfileId
+              and link.status = :status
+              and academyClass.status = :status
+            order by academyClass.name asc, academyClass.id asc
+            """)
+    List<AcademyClassStudent> findActiveLinksWithActiveClassByStudentProfileId(
+            @Param("studentProfileId") Long studentProfileId,
+            @Param("status") ScheduleStatus status
+    );
 }
