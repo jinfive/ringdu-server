@@ -603,6 +603,140 @@ class ConsultationControllerTest {
     }
 
     @Test
+    @DisplayName("TEACHER 상담 요청 조회는 요청 담당 선생님이 아니라 담당 학생 기준으로 동작한다")
+    void teacherCanListAssignedStudentRequestEvenWhenRequestTeacherIsDifferent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-request-student-scope@ringdu.com");
+        User otherTeacher = createConnectedTeacher(new AcademyContext(fixture.academyToken(), fixture.academy()), "other-request-teacher@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+
+        mockMvc.perform(post("/api/parent/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.parentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ConsultationRequestCreateRequest(
+                                fixture.academy().getId(),
+                                fixture.studentProfileId(),
+                                otherTeacher.getId(),
+                                monday(),
+                                LocalTime.of(14, 0),
+                                LocalTime.of(15, 0),
+                                ConsultationTopic.STUDY,
+                                "담당 학생 기준 상담 요청입니다."
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].teacherUserId").value(otherTeacher.getId()))
+                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()));
+    }
+
+    @Test
+    @DisplayName("TEACHER가 APPROVED 상담 요청을 완료 처리하면 ACADEMY와 TEACHER 조회 모두 COMPLETED로 보인다")
+    void teacherCanCompleteApprovedRequestAndStatusIsShared() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-complete@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "승인"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+
+        mockMvc.perform(post("/api/teacher/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "상담 완료"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .queryParam("status", "COMPLETED")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+    }
+
+    @Test
+    @DisplayName("TEACHER는 REQUESTED 상담 요청을 바로 완료 처리할 수 없다")
+    void teacherCannotCompleteRequestedConsultationRequest() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-complete-requested@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/teacher/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "바로 완료"))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("담당하지 않는 TEACHER는 상담 요청 조회와 완료 처리를 할 수 없다")
+    void unassignedTeacherCannotAccessOrCompleteConsultationRequest() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-unassigned-teacher-request@ringdu.com");
+        User otherTeacher = saveUser("unassigned-request-teacher@ringdu.com", Role.TEACHER);
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + accessToken(otherTeacher)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "승인"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/teacher/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + accessToken(otherTeacher))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "권한 없음"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("학원이 완료 처리하면 TEACHER 상담 요청 조회에서도 COMPLETED로 보인다")
+    void academyCompleteStatusIsVisibleToTeacher() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-complete-visible@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "승인"))))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "완료"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .queryParam("status", "COMPLETED")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].consultationRequestId").value(requestId));
+    }
+
+    @Test
     @DisplayName("다른 학원은 학생 상담 메모를 조회하거나 작성할 수 없다")
     void otherAcademyCannotAccessConsultationMemo() throws Exception {
         ConsultationFixture owner = consultationFixture("consult-memo-owner@ringdu.com");

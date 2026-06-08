@@ -53,6 +53,7 @@ public enum ErrorCode {
     CONSULTATION_AVAILABILITY_TIME_OVERLAP(HttpStatus.CONFLICT, "같은 요일에 겹치는 상담 가능 시간이 있습니다."),
     CONSULTATION_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "상담 요청을 찾을 수 없습니다."),
     CONSULTATION_MEMO_NOT_FOUND(HttpStatus.NOT_FOUND, "상담 메모를 찾을 수 없습니다."),
+    CONSULTATION_REQUEST_STATUS_INVALID(HttpStatus.CONFLICT, "현재 상태에서는 상담 요청을 처리할 수 없습니다."),
     CONSULTATION_REQUEST_TIME_INVALID(HttpStatus.BAD_REQUEST, "상담 요청 시작 시간은 종료 시간보다 빨라야 합니다."),
     CONSULTATION_REQUEST_TIME_UNAVAILABLE(HttpStatus.BAD_REQUEST, "학원이 등록한 상담 가능 시간 안에서 요청해야 합니다."),
     CONSULTATION_REQUEST_ALREADY_EXISTS(HttpStatus.CONFLICT, "같은 시간대에 이미 요청된 상담이 있습니다."),

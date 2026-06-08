@@ -346,7 +346,13 @@ public class ConsultationService {
     }
 
     @Transactional(readOnly = true)
-    public List<ConsultationRequestResponse> getTeacherConsultationRequests(Long teacherUserId, Long studentProfileId) {
+    public List<ConsultationRequestResponse> getTeacherConsultationRequests(
+            Long teacherUserId,
+            Long studentProfileId,
+            ConsultationRequestStatus status,
+            LocalDate from,
+            LocalDate to
+    ) {
         List<Long> assignedStudentIds;
         if (studentProfileId != null) {
             validateTeacherAssignedStudent(teacherUserId, studentProfileId);
@@ -359,8 +365,27 @@ public class ConsultationService {
         }
         return requestRepository.findAllByStudentProfileIdInOrderByRequestedDateDescRequestedStartTimeDescIdDesc(assignedStudentIds)
                 .stream()
+                .filter(request -> status == null || request.getStatus() == status)
+                .filter(request -> from == null || !request.getRequestedDate().isBefore(from))
+                .filter(request -> to == null || !request.getRequestedDate().isAfter(to))
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional
+    public ConsultationRequestResponse completeTeacherRequest(
+            Long teacherUserId,
+            Long requestId,
+            ConsultationRequestActionRequest actionRequest
+    ) {
+        ConsultationRequest request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_REQUEST_NOT_FOUND));
+        validateTeacherAssignedStudent(teacherUserId, request.getStudentProfileId());
+        if (request.getStatus() != ConsultationRequestStatus.APPROVED) {
+            throw new BusinessException(ErrorCode.CONSULTATION_REQUEST_STATUS_INVALID);
+        }
+        request.complete(memo(actionRequest));
+        return toResponse(request);
     }
 
     @Transactional
