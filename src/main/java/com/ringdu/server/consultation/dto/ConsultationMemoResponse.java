@@ -8,9 +8,11 @@ import java.time.LocalDateTime;
 public record ConsultationMemoResponse(
         Long consultationMemoId,
         Long academyId,
+        String academyName,
         Long studentProfileId,
         String studentName,
         Long consultationRequestId,
+        Long writerUserId,
         ConsultationMemoWriterRole writerRole,
         String writerName,
         String title,
@@ -20,13 +22,20 @@ public record ConsultationMemoResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
-    public static ConsultationMemoResponse of(ConsultationMemo memo, String studentName, String writerName) {
+    public static ConsultationMemoResponse of(
+            ConsultationMemo memo,
+            String academyName,
+            String studentName,
+            String writerName
+    ) {
         return new ConsultationMemoResponse(
                 memo.getId(),
                 memo.getAcademyId(),
+                academyName,
                 memo.getStudentProfileId(),
                 studentName,
                 memo.getConsultationRequestId(),
+                memo.getWriterUserId(),
                 memo.getWriterRole(),
                 writerName,
                 memo.getTitle(),

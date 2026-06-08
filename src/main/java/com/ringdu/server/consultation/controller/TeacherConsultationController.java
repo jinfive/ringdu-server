@@ -3,6 +3,7 @@ package com.ringdu.server.consultation.controller;
 import com.ringdu.server.consultation.dto.ConsultationMemoCreateRequest;
 import com.ringdu.server.consultation.dto.ConsultationMemoResponse;
 import com.ringdu.server.consultation.dto.ConsultationMemoUpdateRequest;
+import com.ringdu.server.consultation.dto.ConsultationRequestResponse;
 import com.ringdu.server.consultation.dto.TeacherConsultationStudentResponse;
 import com.ringdu.server.consultation.service.ConsultationService;
 import com.ringdu.server.global.common.ApiResponse;
@@ -34,6 +35,15 @@ public class TeacherConsultationController {
             @AuthenticationPrincipal CustomUserPrincipal principal
     ) {
         return ApiResponse.success(consultationService.getTeacherConsultationStudents(principal.userId()));
+    }
+
+    @GetMapping("/requests")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ApiResponse<List<ConsultationRequestResponse>> getConsultationRequests(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @RequestParam(required = false) Long studentProfileId
+    ) {
+        return ApiResponse.success(consultationService.getTeacherConsultationRequests(principal.userId(), studentProfileId));
     }
 
     @GetMapping

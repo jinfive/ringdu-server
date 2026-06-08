@@ -328,10 +328,38 @@ public class ConsultationService {
         if (assignedStudentIds.isEmpty()) {
             return List.of();
         }
-        return studentProfileRepository.findAllById(assignedStudentIds)
+        List<StudentProfile> profiles = studentProfileRepository.findAllById(assignedStudentIds)
                 .stream()
                 .filter(profile -> profile.getStatus() == StudentStatus.ACTIVE)
-                .map(TeacherConsultationStudentResponse::of)
+                .toList();
+        Map<Long, Academy> academyById = academyRepository.findAllById(
+                        profiles.stream().map(StudentProfile::getAcademyId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(Academy::getId, Function.identity()));
+        return profiles.stream()
+                .map(profile -> TeacherConsultationStudentResponse.of(
+                        profile,
+                        academyById.get(profile.getAcademyId()).getName()
+                ))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConsultationRequestResponse> getTeacherConsultationRequests(Long teacherUserId, Long studentProfileId) {
+        List<Long> assignedStudentIds;
+        if (studentProfileId != null) {
+            validateTeacherAssignedStudent(teacherUserId, studentProfileId);
+            assignedStudentIds = List.of(studentProfileId);
+        } else {
+            assignedStudentIds = getTeacherAssignedStudentIds(teacherUserId);
+        }
+        if (assignedStudentIds.isEmpty()) {
+            return List.of();
+        }
+        return requestRepository.findAllByStudentProfileIdInOrderByRequestedDateDescRequestedStartTimeDescIdDesc(assignedStudentIds)
+                .stream()
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -578,6 +606,11 @@ public class ConsultationService {
         if (memos.isEmpty()) {
             return List.of();
         }
+        Map<Long, Academy> academyById = academyRepository.findAllById(
+                        memos.stream().map(ConsultationMemo::getAcademyId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(Academy::getId, Function.identity()));
         Map<Long, StudentProfile> studentById = studentProfileRepository.findAllById(
                         memos.stream().map(ConsultationMemo::getStudentProfileId).distinct().toList()
                 )
@@ -592,6 +625,7 @@ public class ConsultationService {
         return memos.stream()
                 .map(memo -> ConsultationMemoResponse.of(
                         memo,
+                        academyById.get(memo.getAcademyId()).getName(),
                         studentById.get(memo.getStudentProfileId()).getName(),
                         userById.get(memo.getWriterUserId()).getName()
                 ))
@@ -599,11 +633,13 @@ public class ConsultationService {
     }
 
     private ConsultationMemoResponse toMemoResponse(ConsultationMemo memo) {
+        Academy academy = academyRepository.findById(memo.getAcademyId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACADEMY_NOT_FOUND));
         StudentProfile studentProfile = studentProfileRepository.findById(memo.getStudentProfileId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.STUDENT_NOT_FOUND));
         User writer = userRepository.findById(memo.getWriterUserId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        return ConsultationMemoResponse.of(memo, studentProfile.getName(), writer.getName());
+        return ConsultationMemoResponse.of(memo, academy.getName(), studentProfile.getName(), writer.getName());
     }
 
     private StudentProfile getActiveStudentProfile(Long studentProfileId) {
