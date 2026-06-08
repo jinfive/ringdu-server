@@ -12,6 +12,10 @@ import java.util.List;
 public interface StudentProfileRepository extends JpaRepository<StudentProfile, Long> {
     List<StudentProfile> findAllByAcademyId(Long academyId);
 
+    List<StudentProfile> findAllByUserIdAndStatus(Long userId, StudentStatus status);
+
+    List<StudentProfile> findAllByUserIdInAndStatus(List<Long> userIds, StudentStatus status);
+
     @Query("""
             select p
             from StudentProfile p

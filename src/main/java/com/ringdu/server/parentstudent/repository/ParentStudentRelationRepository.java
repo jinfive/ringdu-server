@@ -19,6 +19,11 @@ public interface ParentStudentRelationRepository extends JpaRepository<ParentStu
 
     List<ParentStudentRelation> findAllByParentIdOrderByCreatedAtDesc(Long parentUserId);
 
+    List<ParentStudentRelation> findAllByParentIdAndStatusOrderByCreatedAtDesc(
+            Long parentUserId,
+            ParentStudentRelationStatus status
+    );
+
     List<ParentStudentRelation> findAllByStudentIdOrderByCreatedAtDesc(Long studentUserId);
 
     @Query("""
