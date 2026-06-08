@@ -2,6 +2,9 @@ package com.ringdu.server.consultation.controller;
 
 import com.ringdu.server.consultation.dto.ConsultationAvailabilityRequest;
 import com.ringdu.server.consultation.dto.ConsultationAvailabilityResponse;
+import com.ringdu.server.consultation.dto.ConsultationMemoCreateRequest;
+import com.ringdu.server.consultation.dto.ConsultationMemoResponse;
+import com.ringdu.server.consultation.dto.ConsultationMemoUpdateRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestActionRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestResponse;
 import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
@@ -127,5 +130,34 @@ public class AcademyConsultationController {
             @RequestBody(required = false) ConsultationRequestActionRequest request
     ) {
         return ApiResponse.success(consultationService.completeAcademyRequest(principal.userId(), requestId, request));
+    }
+
+    @GetMapping("/me/students/{studentProfileId}/consultation-memos")
+    @PreAuthorize("hasRole('ACADEMY')")
+    public ApiResponse<List<ConsultationMemoResponse>> getStudentConsultationMemos(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentProfileId
+    ) {
+        return ApiResponse.success(consultationService.getAcademyStudentMemos(principal.userId(), studentProfileId));
+    }
+
+    @PostMapping("/me/students/{studentProfileId}/consultation-memos")
+    @PreAuthorize("hasRole('ACADEMY')")
+    public ApiResponse<ConsultationMemoResponse> createStudentConsultationMemo(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentProfileId,
+            @Valid @RequestBody ConsultationMemoCreateRequest request
+    ) {
+        return ApiResponse.success(consultationService.createAcademyStudentMemo(principal.userId(), studentProfileId, request));
+    }
+
+    @PutMapping("/me/consultation-memos/{memoId}")
+    @PreAuthorize("hasRole('ACADEMY')")
+    public ApiResponse<ConsultationMemoResponse> updateConsultationMemo(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long memoId,
+            @Valid @RequestBody ConsultationMemoUpdateRequest request
+    ) {
+        return ApiResponse.success(consultationService.updateAcademyMemo(principal.userId(), memoId, request));
     }
 }

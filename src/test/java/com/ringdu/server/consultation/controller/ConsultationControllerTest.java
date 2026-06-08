@@ -19,6 +19,7 @@ import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
 import com.ringdu.server.consultation.entity.ConsultationTopic;
 import com.ringdu.server.consultation.entity.ConsultationType;
 import com.ringdu.server.consultation.repository.ConsultationAvailabilityRepository;
+import com.ringdu.server.consultation.repository.ConsultationMemoRepository;
 import com.ringdu.server.consultation.repository.ConsultationRequestRepository;
 import com.ringdu.server.global.security.jwt.JwtTokenProvider;
 import com.ringdu.server.parentstudent.entity.ParentStudentRelation;
@@ -33,6 +34,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.TemporalAdjusters;
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -96,6 +98,9 @@ class ConsultationControllerTest {
 
     @Autowired
     private ConsultationRequestRepository consultationRequestRepository;
+
+    @Autowired
+    private ConsultationMemoRepository consultationMemoRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -437,6 +442,378 @@ class ConsultationControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    @DisplayName("TEACHER가 담당 학생 상담 메모를 작성하고 조회할 수 있다")
+    void teacherCanCreateAndListAssignedStudentMemo() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-memo@ringdu.com");
+
+        mockMvc.perform(post("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(fixture.studentProfileId(), null, "학습 상담"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.studentProfileId").value(fixture.studentProfileId()))
+                .andExpect(jsonPath("$.data.academyId").value(fixture.academy().getId()))
+                .andExpect(jsonPath("$.data.academyName").value(fixture.academy().getName()))
+                .andExpect(jsonPath("$.data.writerUserId").value(fixture.teacher().getId()))
+                .andExpect(jsonPath("$.data.writerRole").value("TEACHER"))
+                .andExpect(jsonPath("$.data.writerName").value(fixture.teacher().getName()));
+
+        mockMvc.perform(get("/api/teacher/consultation-memos")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].academyName").value(fixture.academy().getName()))
+                .andExpect(jsonPath("$.data[0].title").value("학습 상담"));
+    }
+
+    @Test
+    @DisplayName("TEACHER가 담당 학생의 ACADEMY 작성 메모까지 조회할 수 있다")
+    void teacherCanListAcademyMemoForAssignedStudent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-academy-memo@ringdu.com");
+
+        mockMvc.perform(post("/api/academies/me/students/{studentProfileId}/consultation-memos", fixture.studentProfileId())
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(null, null, "학원 작성 상담"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.writerRole").value("ACADEMY"));
+
+        mockMvc.perform(get("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].writerRole").value("ACADEMY"))
+                .andExpect(jsonPath("$.data[0].title").value("학원 작성 상담"));
+    }
+
+    @Test
+    @DisplayName("TEACHER는 담당하지 않는 학생 상담 메모를 작성할 수 없다")
+    void teacherCannotCreateMemoForUnassignedStudent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-forbidden@ringdu.com");
+        User otherStudentUser = saveUser("unassigned-student-consult@ringdu.com", Role.STUDENT);
+        StudentProfile otherStudent = createStudent(new AcademyContext(fixture.academyToken(), fixture.academy()), otherStudentUser.getId());
+
+        mockMvc.perform(post("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(otherStudent.getId(), null, "권한 없는 상담"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("TEACHER는 본인이 작성한 상담 메모만 수정할 수 있다")
+    void teacherCanUpdateOwnMemoOnly() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-update@ringdu.com");
+
+        mockMvc.perform(post("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(fixture.studentProfileId(), null, "수정 전 상담"))))
+                .andExpect(status().isOk());
+
+        Long memoId = consultationMemoRepository.findAll().stream()
+                .reduce((first, second) -> second)
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(put("/api/teacher/consultation-memos/{memoId}", memoId)
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoUpdate("수정 후 상담"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("수정 후 상담"));
+
+        User otherTeacher = saveUser("other-teacher-update-consult@ringdu.com", Role.TEACHER);
+        mockMvc.perform(put("/api/teacher/consultation-memos/{memoId}", memoId)
+                        .header("Authorization", "Bearer " + accessToken(otherTeacher))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoUpdate("타인 수정"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("ACADEMY가 자기 학원 학생 상담 메모를 작성하고 선생님 작성 메모까지 조회할 수 있다")
+    void academyCanCreateAndListTeacherMemoForOwnStudent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-memo@ringdu.com");
+
+        mockMvc.perform(post("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(fixture.studentProfileId(), null, "선생님 상담"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/academies/me/students/{studentProfileId}/consultation-memos", fixture.studentProfileId())
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(null, null, "학원 상담"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.writerRole").value("ACADEMY"));
+
+        mockMvc.perform(get("/api/academies/me/students/{studentProfileId}/consultation-memos", fixture.studentProfileId())
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()));
+    }
+
+    @Test
+    @DisplayName("ACADEMY가 상담 요청에 연결된 상담 메모를 작성하고 학생별 조회에 포함된다")
+    void academyCanCreateRequestLinkedMemo() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-linked-memo@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/students/{studentProfileId}/consultation-memos", fixture.studentProfileId())
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(null, requestId, "요청 연결 학원 상담"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultationRequestId").value(requestId))
+                .andExpect(jsonPath("$.data.writerRole").value("ACADEMY"));
+
+        mockMvc.perform(get("/api/academies/me/students/{studentProfileId}/consultation-memos", fixture.studentProfileId())
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].consultationRequestId").value(requestId));
+    }
+
+    @Test
+    @DisplayName("TEACHER가 담당 학생 상담 요청 목록을 조회하고 요청 연결 메모를 작성할 수 있다")
+    void teacherCanListRequestsAndCreateLinkedMemoForAssignedStudent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-linked-request@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].consultationRequestId").value(requestId));
+
+        mockMvc.perform(post("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(fixture.studentProfileId(), requestId, "요청 연결 선생님 상담"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultationRequestId").value(requestId));
+    }
+
+    @Test
+    @DisplayName("TEACHER 상담 요청 조회는 요청 담당 선생님이 아니라 담당 학생 기준으로 동작한다")
+    void teacherCanListAssignedStudentRequestEvenWhenRequestTeacherIsDifferent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-request-student-scope@ringdu.com");
+        User otherTeacher = createConnectedTeacher(new AcademyContext(fixture.academyToken(), fixture.academy()), "other-request-teacher@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+
+        mockMvc.perform(post("/api/parent/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.parentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ConsultationRequestCreateRequest(
+                                fixture.academy().getId(),
+                                fixture.studentProfileId(),
+                                otherTeacher.getId(),
+                                monday(),
+                                LocalTime.of(14, 0),
+                                LocalTime.of(15, 0),
+                                ConsultationTopic.STUDY,
+                                "담당 학생 기준 상담 요청입니다."
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].teacherUserId").value(otherTeacher.getId()))
+                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()));
+    }
+
+    @Test
+    @DisplayName("TEACHER가 APPROVED 상담 요청을 완료 처리하면 ACADEMY와 TEACHER 조회 모두 COMPLETED로 보인다")
+    void teacherCanCompleteApprovedRequestAndStatusIsShared() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-complete@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "승인"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+
+        mockMvc.perform(post("/api/teacher/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "상담 완료"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .queryParam("status", "COMPLETED")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+    }
+
+    @Test
+    @DisplayName("TEACHER는 REQUESTED 상담 요청을 바로 완료 처리할 수 없다")
+    void teacherCannotCompleteRequestedConsultationRequest() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-complete-requested@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/teacher/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "바로 완료"))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("담당하지 않는 TEACHER는 상담 요청 조회와 완료 처리를 할 수 없다")
+    void unassignedTeacherCannotAccessOrCompleteConsultationRequest() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-unassigned-teacher-request@ringdu.com");
+        User otherTeacher = saveUser("unassigned-request-teacher@ringdu.com", Role.TEACHER);
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + accessToken(otherTeacher)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "승인"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/teacher/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + accessToken(otherTeacher))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "권한 없음"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("학원이 완료 처리하면 TEACHER 상담 요청 조회에서도 COMPLETED로 보인다")
+    void academyCompleteStatusIsVisibleToTeacher() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-complete-visible@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "승인"))))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "완료"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/teacher/consultation-memos/requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .queryParam("status", "COMPLETED")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].consultationRequestId").value(requestId));
+    }
+
+    @Test
+    @DisplayName("다른 학원은 학생 상담 메모를 조회하거나 작성할 수 없다")
+    void otherAcademyCannotAccessConsultationMemo() throws Exception {
+        ConsultationFixture owner = consultationFixture("consult-memo-owner@ringdu.com");
+        ConsultationFixture other = consultationFixture("consult-memo-other@ringdu.com");
+
+        mockMvc.perform(get("/api/academies/me/students/{studentProfileId}/consultation-memos", owner.studentProfileId())
+                        .header("Authorization", "Bearer " + other.academyToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/academies/me/students/{studentProfileId}/consultation-memos", owner.studentProfileId())
+                        .header("Authorization", "Bearer " + other.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(null, null, "다른 학원 상담"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("상담 요청 연결 메모는 해당 학원과 학생 상담 요청만 허용한다")
+    void memoConsultationRequestLinkMustMatchAcademyAndStudent() throws Exception {
+        ConsultationFixture owner = consultationFixture("consult-memo-link-owner@ringdu.com");
+        ConsultationFixture other = consultationFixture("consult-memo-link-other@ringdu.com");
+        createAvailability(owner, DayOfWeek.MONDAY, 14, 16);
+        createAvailability(other, DayOfWeek.MONDAY, 14, 16);
+        Long ownerRequestId = createRequest(owner, monday(), 14, 15);
+        Long otherRequestId = createRequest(other, monday(), 14, 15);
+
+        mockMvc.perform(post("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + owner.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(owner.studentProfileId(), ownerRequestId, "요청 연결 상담"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultationRequestId").value(ownerRequestId));
+
+        mockMvc.perform(post("/api/teacher/consultation-memos")
+                        .header("Authorization", "Bearer " + owner.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(owner.studentProfileId(), otherRequestId, "잘못된 요청 연결"))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("상담 요청 ID와 학생 ID가 불일치하면 메모 저장에 실패한다")
+    void memoStudentMustMatchConsultationRequestStudent() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-memo-student-mismatch@ringdu.com");
+        User secondParent = saveUser("second-parent-mismatch@ringdu.com", Role.PARENT);
+        User secondStudentUser = saveUser("second-student-mismatch@ringdu.com", Role.STUDENT);
+        StudentProfile secondStudent = createStudent(new AcademyContext(fixture.academyToken(), fixture.academy()), secondStudentUser.getId());
+        parentStudentRelationRepository.save(ParentStudentRelation.create(secondParent, secondStudentUser));
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 17);
+
+        mockMvc.perform(post("/api/parent/consultation-requests")
+                        .header("Authorization", "Bearer " + accessToken(secondParent))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ConsultationRequestCreateRequest(
+                                fixture.academy().getId(),
+                                secondStudent.getId(),
+                                fixture.teacher().getId(),
+                                monday(),
+                                LocalTime.of(14, 0),
+                                LocalTime.of(15, 0),
+                                ConsultationTopic.STUDY,
+                                "두 번째 학생 상담 요청입니다."
+                        ))))
+                .andExpect(status().isOk());
+        Long secondRequestId = consultationRequestRepository.findAllByParentUserIdOrderByCreatedAtDescIdDesc(secondParent.getId())
+                .stream()
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(post("/api/academies/me/students/{studentProfileId}/consultation-memos", fixture.studentProfileId())
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(memoCreate(null, secondRequestId, "학생 불일치 상담"))))
+                .andExpect(status().isForbidden());
+    }
+
     private Long createAvailability(ConsultationFixture fixture, DayOfWeek dayOfWeek, int startHour, int endHour) throws Exception {
         mockMvc.perform(post("/api/academies/me/consultation-availability")
                         .header("Authorization", "Bearer " + fixture.academyToken())
@@ -494,6 +871,26 @@ class ConsultationControllerTest {
         );
     }
 
+    private Map<String, Object> memoCreate(Long studentProfileId, Long consultationRequestId, String title) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("studentProfileId", studentProfileId);
+        payload.put("consultationRequestId", consultationRequestId);
+        payload.put("title", title);
+        payload.put("content", "최근 수학 문제 풀이 속도가 느려져 원인을 확인했습니다.");
+        payload.put("nextAction", "다음 수업에서 오답 유형을 다시 확인합니다.");
+        payload.put("consultationDate", monday().toString());
+        return payload;
+    }
+
+    private Map<String, Object> memoUpdate(String title) {
+        return Map.of(
+                "title", title,
+                "content", "수정된 상담 내용입니다.",
+                "nextAction", "수정된 다음 조치입니다.",
+                "consultationDate", monday().toString()
+        );
+    }
+
     private ConsultationFixture consultationFixture(String email) {
         AcademyContext academyContext = academyContext(email);
         User teacher = createConnectedTeacher(academyContext, "teacher-" + email);
@@ -518,6 +915,7 @@ class ConsultationControllerTest {
                 academyContext.academy(),
                 parent,
                 teacher,
+                accessToken(teacher),
                 studentProfile.getId()
         );
     }
@@ -600,6 +998,7 @@ class ConsultationControllerTest {
             Academy academy,
             User parent,
             User teacher,
+            String teacherToken,
             Long studentProfileId
     ) {
     }

@@ -11,17 +11,25 @@ import com.ringdu.server.academy.schedule.repository.AcademyClassRepository;
 import com.ringdu.server.academy.schedule.repository.AcademyClassStudentRepository;
 import com.ringdu.server.consultation.dto.ConsultationAvailabilityRequest;
 import com.ringdu.server.consultation.dto.ConsultationAvailabilityResponse;
+import com.ringdu.server.consultation.dto.ConsultationMemoCreateRequest;
+import com.ringdu.server.consultation.dto.ConsultationMemoResponse;
+import com.ringdu.server.consultation.dto.ConsultationMemoUpdateRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestActionRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestCreateRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestResponse;
 import com.ringdu.server.consultation.dto.ParentConsultationOptionResponse;
+import com.ringdu.server.consultation.dto.TeacherConsultationStudentResponse;
 import com.ringdu.server.consultation.entity.ConsultationAvailability;
 import com.ringdu.server.consultation.entity.ConsultationAvailabilityStatus;
+import com.ringdu.server.consultation.entity.ConsultationMemo;
+import com.ringdu.server.consultation.entity.ConsultationMemoStatus;
+import com.ringdu.server.consultation.entity.ConsultationMemoWriterRole;
 import com.ringdu.server.consultation.entity.ConsultationRequest;
 import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
 import com.ringdu.server.consultation.entity.ConsultationRequestType;
 import com.ringdu.server.consultation.entity.ConsultationType;
 import com.ringdu.server.consultation.repository.ConsultationAvailabilityRepository;
+import com.ringdu.server.consultation.repository.ConsultationMemoRepository;
 import com.ringdu.server.consultation.repository.ConsultationRequestRepository;
 import com.ringdu.server.global.exception.BusinessException;
 import com.ringdu.server.global.exception.ErrorCode;
@@ -56,6 +64,7 @@ public class ConsultationService {
     private final UserRepository userRepository;
     private final ConsultationAvailabilityRepository availabilityRepository;
     private final ConsultationRequestRepository requestRepository;
+    private final ConsultationMemoRepository memoRepository;
 
     @Transactional(readOnly = true)
     public List<ConsultationAvailabilityResponse> getAcademyAvailability(Long academyUserId) {
@@ -241,6 +250,182 @@ public class ConsultationService {
         return toResponse(request);
     }
 
+    @Transactional(readOnly = true)
+    public List<ConsultationMemoResponse> getAcademyStudentMemos(Long academyUserId, Long studentProfileId) {
+        Academy academy = getAcademy(academyUserId);
+        StudentProfile studentProfile = getActiveStudentProfile(studentProfileId);
+        validateAcademyStudent(academy.getId(), studentProfile);
+        return toMemoResponses(memoRepository.findAllByAcademyIdAndStudentProfileIdAndStatusOrderByConsultationDateDescCreatedAtDescIdDesc(
+                academy.getId(),
+                studentProfileId,
+                ConsultationMemoStatus.ACTIVE
+        ));
+    }
+
+    @Transactional
+    public ConsultationMemoResponse createAcademyStudentMemo(
+            Long academyUserId,
+            Long studentProfileId,
+            ConsultationMemoCreateRequest request
+    ) {
+        Academy academy = getAcademy(academyUserId);
+        StudentProfile studentProfile = getActiveStudentProfile(studentProfileId);
+        validateAcademyStudent(academy.getId(), studentProfile);
+        validateConsultationRequestLink(academy.getId(), studentProfileId, request.consultationRequestId());
+
+        ConsultationMemo memo = memoRepository.save(ConsultationMemo.create(
+                academy.getId(),
+                studentProfileId,
+                request.consultationRequestId(),
+                academy.getUser().getId(),
+                ConsultationMemoWriterRole.ACADEMY,
+                request.title(),
+                request.content(),
+                request.nextAction(),
+                request.consultationDate()
+        ));
+        return toMemoResponse(memo);
+    }
+
+    @Transactional
+    public ConsultationMemoResponse updateAcademyMemo(
+            Long academyUserId,
+            Long memoId,
+            ConsultationMemoUpdateRequest request
+    ) {
+        Academy academy = getAcademy(academyUserId);
+        ConsultationMemo memo = getActiveMemo(memoId);
+        if (!Objects.equals(memo.getAcademyId(), academy.getId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        memo.update(request.title(), request.content(), request.nextAction(), request.consultationDate());
+        return toMemoResponse(memo);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConsultationMemoResponse> getTeacherMemos(Long teacherUserId, Long studentProfileId) {
+        if (studentProfileId != null) {
+            validateTeacherAssignedStudent(teacherUserId, studentProfileId);
+            return toMemoResponses(memoRepository.findAllByStudentProfileIdInAndStatusOrderByConsultationDateDescCreatedAtDescIdDesc(
+                    List.of(studentProfileId),
+                    ConsultationMemoStatus.ACTIVE
+            ));
+        }
+
+        List<Long> assignedStudentIds = getTeacherAssignedStudentIds(teacherUserId);
+        if (assignedStudentIds.isEmpty()) {
+            return List.of();
+        }
+        return toMemoResponses(memoRepository.findAllByStudentProfileIdInAndStatusOrderByConsultationDateDescCreatedAtDescIdDesc(
+                assignedStudentIds,
+                ConsultationMemoStatus.ACTIVE
+        ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<TeacherConsultationStudentResponse> getTeacherConsultationStudents(Long teacherUserId) {
+        List<Long> assignedStudentIds = getTeacherAssignedStudentIds(teacherUserId);
+        if (assignedStudentIds.isEmpty()) {
+            return List.of();
+        }
+        List<StudentProfile> profiles = studentProfileRepository.findAllById(assignedStudentIds)
+                .stream()
+                .filter(profile -> profile.getStatus() == StudentStatus.ACTIVE)
+                .toList();
+        Map<Long, Academy> academyById = academyRepository.findAllById(
+                        profiles.stream().map(StudentProfile::getAcademyId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(Academy::getId, Function.identity()));
+        return profiles.stream()
+                .map(profile -> TeacherConsultationStudentResponse.of(
+                        profile,
+                        academyById.get(profile.getAcademyId()).getName()
+                ))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConsultationRequestResponse> getTeacherConsultationRequests(
+            Long teacherUserId,
+            Long studentProfileId,
+            ConsultationRequestStatus status,
+            LocalDate from,
+            LocalDate to
+    ) {
+        List<Long> assignedStudentIds;
+        if (studentProfileId != null) {
+            validateTeacherAssignedStudent(teacherUserId, studentProfileId);
+            assignedStudentIds = List.of(studentProfileId);
+        } else {
+            assignedStudentIds = getTeacherAssignedStudentIds(teacherUserId);
+        }
+        if (assignedStudentIds.isEmpty()) {
+            return List.of();
+        }
+        return requestRepository.findAllByStudentProfileIdInOrderByRequestedDateDescRequestedStartTimeDescIdDesc(assignedStudentIds)
+                .stream()
+                .filter(request -> status == null || request.getStatus() == status)
+                .filter(request -> from == null || !request.getRequestedDate().isBefore(from))
+                .filter(request -> to == null || !request.getRequestedDate().isAfter(to))
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public ConsultationRequestResponse completeTeacherRequest(
+            Long teacherUserId,
+            Long requestId,
+            ConsultationRequestActionRequest actionRequest
+    ) {
+        ConsultationRequest request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_REQUEST_NOT_FOUND));
+        validateTeacherAssignedStudent(teacherUserId, request.getStudentProfileId());
+        if (request.getStatus() != ConsultationRequestStatus.APPROVED) {
+            throw new BusinessException(ErrorCode.CONSULTATION_REQUEST_STATUS_INVALID);
+        }
+        request.complete(memo(actionRequest));
+        return toResponse(request);
+    }
+
+    @Transactional
+    public ConsultationMemoResponse createTeacherMemo(Long teacherUserId, ConsultationMemoCreateRequest request) {
+        if (request.studentProfileId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        StudentProfile studentProfile = validateTeacherAssignedStudent(teacherUserId, request.studentProfileId());
+        validateConsultationRequestLink(studentProfile.getAcademyId(), studentProfile.getId(), request.consultationRequestId());
+
+        ConsultationMemo memo = memoRepository.save(ConsultationMemo.create(
+                studentProfile.getAcademyId(),
+                studentProfile.getId(),
+                request.consultationRequestId(),
+                teacherUserId,
+                ConsultationMemoWriterRole.TEACHER,
+                request.title(),
+                request.content(),
+                request.nextAction(),
+                request.consultationDate()
+        ));
+        return toMemoResponse(memo);
+    }
+
+    @Transactional
+    public ConsultationMemoResponse updateTeacherMemo(
+            Long teacherUserId,
+            Long memoId,
+            ConsultationMemoUpdateRequest request
+    ) {
+        ConsultationMemo memo = getActiveMemo(memoId);
+        if (memo.getWriterRole() != ConsultationMemoWriterRole.TEACHER
+                || !Objects.equals(memo.getWriterUserId(), teacherUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        validateTeacherAssignedStudent(teacherUserId, memo.getStudentProfileId());
+        memo.update(request.title(), request.content(), request.nextAction(), request.consultationDate());
+        return toMemoResponse(memo);
+    }
+
     private void validateAvailabilityTime(ConsultationAvailabilityRequest request) {
         if (!request.startTime().isBefore(request.endTime())) {
             throw new BusinessException(ErrorCode.CONSULTATION_AVAILABILITY_TIME_INVALID);
@@ -367,6 +552,64 @@ public class ConsultationService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_REQUEST_NOT_FOUND));
     }
 
+    private void validateAcademyStudent(Long academyId, StudentProfile studentProfile) {
+        if (!Objects.equals(studentProfile.getAcademyId(), academyId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private StudentProfile validateTeacherAssignedStudent(Long teacherUserId, Long studentProfileId) {
+        StudentProfile studentProfile = getActiveStudentProfile(studentProfileId);
+        boolean assigned = classStudentRepository.existsActiveStudentForTeacher(
+                teacherUserId,
+                studentProfileId,
+                ScheduleStatus.ACTIVE
+        );
+        if (!assigned) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        return studentProfile;
+    }
+
+    private List<Long> getTeacherAssignedStudentIds(Long teacherUserId) {
+        List<Long> classIds = classRepository.findAllByTeacherUserIdAndStatusOrderByIdAsc(teacherUserId, ScheduleStatus.ACTIVE)
+                .stream()
+                .map(AcademyClass::getId)
+                .toList();
+        if (classIds.isEmpty()) {
+            return List.of();
+        }
+        List<Long> studentProfileIds = classStudentRepository.findAllByAcademyClassIdInAndStatus(classIds, ScheduleStatus.ACTIVE)
+                .stream()
+                .map(AcademyClassStudent::getStudentProfileId)
+                .distinct()
+                .toList();
+        if (studentProfileIds.isEmpty()) {
+            return List.of();
+        }
+        return studentProfileRepository.findAllById(studentProfileIds)
+                .stream()
+                .filter(profile -> profile.getStatus() == StudentStatus.ACTIVE)
+                .map(StudentProfile::getId)
+                .toList();
+    }
+
+    private void validateConsultationRequestLink(Long academyId, Long studentProfileId, Long consultationRequestId) {
+        if (consultationRequestId == null) {
+            return;
+        }
+        ConsultationRequest request = requestRepository.findByIdAndAcademyId(consultationRequestId, academyId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_REQUEST_NOT_FOUND));
+        if (!Objects.equals(request.getStudentProfileId(), studentProfileId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private ConsultationMemo getActiveMemo(Long memoId) {
+        return memoRepository.findByIdAndStatus(memoId, ConsultationMemoStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_MEMO_NOT_FOUND));
+    }
+
     private ConsultationRequestResponse toResponse(ConsultationRequest request) {
         Academy academy = academyRepository.findById(request.getAcademyId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACADEMY_NOT_FOUND));
@@ -382,6 +625,46 @@ public class ConsultationService {
                 .map(User::getPhone)
                 .orElse(null);
         return ConsultationRequestResponse.of(request, academy.getName(), studentProfile.getName(), parentPhone, teacherName);
+    }
+
+    private List<ConsultationMemoResponse> toMemoResponses(List<ConsultationMemo> memos) {
+        if (memos.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Academy> academyById = academyRepository.findAllById(
+                        memos.stream().map(ConsultationMemo::getAcademyId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(Academy::getId, Function.identity()));
+        Map<Long, StudentProfile> studentById = studentProfileRepository.findAllById(
+                        memos.stream().map(ConsultationMemo::getStudentProfileId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(StudentProfile::getId, Function.identity()));
+        Map<Long, User> userById = userRepository.findAllById(
+                        memos.stream().map(ConsultationMemo::getWriterUserId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+
+        return memos.stream()
+                .map(memo -> ConsultationMemoResponse.of(
+                        memo,
+                        academyById.get(memo.getAcademyId()).getName(),
+                        studentById.get(memo.getStudentProfileId()).getName(),
+                        userById.get(memo.getWriterUserId()).getName()
+                ))
+                .toList();
+    }
+
+    private ConsultationMemoResponse toMemoResponse(ConsultationMemo memo) {
+        Academy academy = academyRepository.findById(memo.getAcademyId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACADEMY_NOT_FOUND));
+        StudentProfile studentProfile = studentProfileRepository.findById(memo.getStudentProfileId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.STUDENT_NOT_FOUND));
+        User writer = userRepository.findById(memo.getWriterUserId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        return ConsultationMemoResponse.of(memo, academy.getName(), studentProfile.getName(), writer.getName());
     }
 
     private StudentProfile getActiveStudentProfile(Long studentProfileId) {

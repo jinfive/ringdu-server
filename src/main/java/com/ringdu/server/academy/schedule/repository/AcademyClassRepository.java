@@ -37,6 +37,8 @@ public interface AcademyClassRepository extends JpaRepository<AcademyClass, Long
             ScheduleStatus status
     );
 
+    List<AcademyClass> findAllByTeacherUserIdAndStatusOrderByIdAsc(Long teacherUserId, ScheduleStatus status);
+
     @Query("""
             select count(c) > 0
             from AcademyClass c
