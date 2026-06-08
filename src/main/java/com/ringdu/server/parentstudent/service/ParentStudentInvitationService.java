@@ -4,6 +4,7 @@ import com.ringdu.server.global.exception.BusinessException;
 import com.ringdu.server.global.exception.ErrorCode;
 import com.ringdu.server.parentstudent.dto.ParentStudentInvitationCreateRequest;
 import com.ringdu.server.parentstudent.dto.ParentStudentInvitationResponse;
+import com.ringdu.server.parentstudent.dto.ParentStudentProfileResponse;
 import com.ringdu.server.parentstudent.dto.ParentStudentRelationResponse;
 import com.ringdu.server.parentstudent.dto.StudentParentInvitationCreateRequest;
 import com.ringdu.server.parentstudent.entity.ParentStudentInvitation;
@@ -142,12 +143,17 @@ public class ParentStudentInvitationService {
         if (relations.isEmpty()) {
             return List.of();
         }
-        Map<Long, List<StudentProfile>> profilesByStudentUserId = studentProfileRepository.findAllByUserIdInAndStatus(
+        Map<Long, List<ParentStudentProfileResponse>> profilesByStudentUserId = studentProfileRepository
+                .findAllByUserIdInAndStatusOrderByNameAscIdAsc(
                         relations.stream().map(relation -> relation.getStudent().getId()).toList(),
                         StudentStatus.ACTIVE
                 )
                 .stream()
-                .collect(Collectors.groupingBy(StudentProfile::getUserId));
+                .collect(Collectors.groupingBy(
+                        StudentProfile::getUserId,
+                        Collectors.mapping(ParentStudentProfileResponse::from, Collectors.toList())
+                ));
+
         return relations.stream()
                 .map(relation -> ParentStudentRelationResponse.from(
                         relation,

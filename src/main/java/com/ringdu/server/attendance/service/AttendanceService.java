@@ -29,8 +29,8 @@ import com.ringdu.server.global.exception.ErrorCode;
 import com.ringdu.server.parentstudent.entity.ParentStudentRelationStatus;
 import com.ringdu.server.parentstudent.repository.ParentStudentRelationRepository;
 import com.ringdu.server.student.entity.StudentProfile;
-import com.ringdu.server.student.repository.StudentProfileRepository;
 import com.ringdu.server.student.entity.StudentStatus;
+import com.ringdu.server.student.repository.StudentProfileRepository;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -38,6 +38,7 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -53,9 +54,9 @@ public class AttendanceService {
     private final AcademyClassStudentRepository classStudentRepository;
     private final AcademyClassroomRepository classroomRepository;
     private final StudentProfileRepository studentProfileRepository;
+    private final ParentStudentRelationRepository parentStudentRelationRepository;
     private final AttendanceSessionRepository sessionRepository;
     private final AttendanceRecordRepository recordRepository;
-    private final ParentStudentRelationRepository parentStudentRelationRepository;
 
     @Transactional(readOnly = true)
     public List<TeacherTodayClassResponse> getTeacherTodayClasses(Long teacherUserId) {
@@ -176,35 +177,22 @@ public class AttendanceService {
     }
 
     @Transactional(readOnly = true)
-    public List<AttendanceAcademyOptionResponse> getStudentAcademies(Long studentUserId) {
-        List<StudentProfile> profiles = getActiveStudentProfiles(studentUserId);
-        return toAcademyOptions(profiles);
-    }
-
-    @Transactional(readOnly = true)
     public List<StudentAttendanceRecordResponse> getStudentAttendanceRecords(
             Long studentUserId,
             Long academyId,
             Integer year,
             Integer month
     ) {
-        List<StudentProfile> profiles = getActiveStudentProfiles(studentUserId)
-                .stream()
-                .filter(profile -> academyId == null || academyId.equals(profile.getAcademyId()))
+        List<StudentProfile> profiles = getActiveStudentProfiles(studentUserId);
+        DateRange dateRange = resolveDateRange(year, month);
+        return findRecords(profiles, academyId, dateRange).stream()
+                .map(context -> StudentAttendanceRecordResponse.of(
+                        context.session(),
+                        context.record(),
+                        context.academyClass(),
+                        context.academy()
+                ))
                 .toList();
-        DateRange range = dateRange(year, month);
-        return profiles.stream()
-                .flatMap(profile -> getFilteredRecords(profile, range, academyId)
-                        .stream()
-                        .map(this::toStudentAttendanceResponse))
-                .sorted(Comparator.comparing(StudentAttendanceRecordResponse::attendanceDate).reversed())
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<AttendanceAcademyOptionResponse> getParentChildAcademies(Long parentUserId, Long studentProfileId) {
-        StudentProfile profile = getParentChildProfile(parentUserId, studentProfileId);
-        return toAcademyOptions(List.of(profile));
     }
 
     @Transactional(readOnly = true)
@@ -215,16 +203,30 @@ public class AttendanceService {
             Integer year,
             Integer month
     ) {
-        StudentProfile profile = getParentChildProfile(parentUserId, studentProfileId);
-        if (academyId != null && !academyId.equals(profile.getAcademyId())) {
-            return List.of();
-        }
-        DateRange range = dateRange(year, month);
-        return getFilteredRecords(profile, range, academyId)
-                .stream()
-                .map(recordContext -> toParentChildAttendanceResponse(profile, recordContext))
-                .sorted(Comparator.comparing(ParentChildAttendanceRecordResponse::attendanceDate).reversed())
+        StudentProfile studentProfile = getActiveStudentProfile(studentProfileId);
+        validateParentChildRelation(parentUserId, studentProfile);
+        DateRange dateRange = resolveDateRange(year, month);
+        return findRecords(List.of(studentProfile), academyId, dateRange).stream()
+                .map(context -> ParentChildAttendanceRecordResponse.of(
+                        context.session(),
+                        context.record(),
+                        context.studentProfile(),
+                        context.academyClass(),
+                        context.academy()
+                ))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AttendanceAcademyOptionResponse> getStudentAcademies(Long studentUserId) {
+        return getAcademyOptions(getActiveStudentProfiles(studentUserId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AttendanceAcademyOptionResponse> getParentChildAcademies(Long parentUserId, Long studentProfileId) {
+        StudentProfile studentProfile = getActiveStudentProfile(studentProfileId);
+        validateParentChildRelation(parentUserId, studentProfile);
+        return getAcademyOptions(List.of(studentProfile));
     }
 
     private AttendanceSessionDetailResponse toDetailResponse(AttendanceSession session, AcademyClass academyClass) {
@@ -254,117 +256,6 @@ public class AttendanceService {
     private Academy getAcademy(Long userId) {
         return academyRepository.findByUserId(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACADEMY_NOT_FOUND));
-    }
-
-    private List<StudentProfile> getActiveStudentProfiles(Long studentUserId) {
-        return studentProfileRepository.findAllByUserIdAndStatus(studentUserId, StudentStatus.ACTIVE);
-    }
-
-    private StudentProfile getParentChildProfile(Long parentUserId, Long studentProfileId) {
-        StudentProfile profile = studentProfileRepository.findById(studentProfileId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.STUDENT_NOT_FOUND));
-        if (profile.getStatus() != StudentStatus.ACTIVE || profile.getUserId() == null) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
-        }
-        boolean connected = parentStudentRelationRepository.existsByParentIdAndStudentIdAndStatus(
-                parentUserId,
-                profile.getUserId(),
-                ParentStudentRelationStatus.ACTIVE
-        );
-        if (!connected) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
-        }
-        return profile;
-    }
-
-    private List<AttendanceAcademyOptionResponse> toAcademyOptions(List<StudentProfile> profiles) {
-        if (profiles.isEmpty()) {
-            return List.of();
-        }
-        Map<Long, Academy> academyById = academyRepository.findAllById(
-                        profiles.stream().map(StudentProfile::getAcademyId).distinct().toList()
-                )
-                .stream()
-                .collect(Collectors.toMap(Academy::getId, Function.identity()));
-        return profiles.stream()
-                .map(StudentProfile::getAcademyId)
-                .distinct()
-                .map(academyId -> academyById.get(academyId))
-                .filter(academy -> academy != null)
-                .map(academy -> new AttendanceAcademyOptionResponse(academy.getId(), academy.getName()))
-                .toList();
-    }
-
-    private List<RecordContext> getFilteredRecords(StudentProfile profile, DateRange range, Long academyId) {
-        return recordRepository.findAllByStudentProfileIdOrderByIdDesc(profile.getId())
-                .stream()
-                .map(record -> toRecordContext(record, academyId))
-                .filter(context -> context != null)
-                .filter(context -> !context.session().getAttendanceDate().isBefore(range.start()))
-                .filter(context -> !context.session().getAttendanceDate().isAfter(range.end()))
-                .toList();
-    }
-
-    private RecordContext toRecordContext(AttendanceRecord record, Long academyId) {
-        AttendanceSession session = sessionRepository.findById(record.getAttendanceSessionId())
-                .orElse(null);
-        if (session == null || (academyId != null && !academyId.equals(session.getAcademyId()))) {
-            return null;
-        }
-        AcademyClass academyClass = classRepository.findById(session.getAcademyClassId())
-                .orElse(null);
-        Academy academy = academyRepository.findById(session.getAcademyId())
-                .orElse(null);
-        if (academyClass == null || academy == null) {
-            return null;
-        }
-        return new RecordContext(record, session, academyClass, academy);
-    }
-
-    private StudentAttendanceRecordResponse toStudentAttendanceResponse(RecordContext context) {
-        return new StudentAttendanceRecordResponse(
-                context.session().getAttendanceDate(),
-                context.academy().getId(),
-                context.academy().getName(),
-                context.academyClass().getId(),
-                context.academyClass().getName(),
-                context.record().getStatus(),
-                statusLabel(context.record().getStatus()),
-                context.record().getMemo()
-        );
-    }
-
-    private ParentChildAttendanceRecordResponse toParentChildAttendanceResponse(StudentProfile profile, RecordContext context) {
-        return new ParentChildAttendanceRecordResponse(
-                context.session().getAttendanceDate(),
-                profile.getId(),
-                profile.getName(),
-                context.academy().getId(),
-                context.academy().getName(),
-                context.academyClass().getId(),
-                context.academyClass().getName(),
-                context.record().getStatus(),
-                statusLabel(context.record().getStatus()),
-                context.record().getMemo()
-        );
-    }
-
-    private DateRange dateRange(Integer year, Integer month) {
-        if (month != null && (month < 1 || month > 12)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
-        }
-        YearMonth yearMonth = year == null || month == null
-                ? YearMonth.now()
-                : YearMonth.of(year, month);
-        return new DateRange(yearMonth.atDay(1), yearMonth.atEndOfMonth());
-    }
-
-    private String statusLabel(AttendanceRecordStatus status) {
-        return switch (status) {
-            case PRESENT -> "출석";
-            case LATE -> "지각";
-            case ABSENT -> "결석";
-        };
     }
 
     private AttendanceSession getSession(Long sessionId) {
@@ -400,16 +291,109 @@ public class AttendanceService {
         return studentProfile;
     }
 
+    private List<StudentProfile> getActiveStudentProfiles(Long studentUserId) {
+        return studentProfileRepository.findAllByUserIdAndStatusOrderByNameAscIdAsc(studentUserId, StudentStatus.ACTIVE);
+    }
+
+    private StudentProfile getActiveStudentProfile(Long studentProfileId) {
+        StudentProfile studentProfile = studentProfileRepository.findById(studentProfileId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STUDENT_NOT_FOUND));
+        if (studentProfile.getStatus() != StudentStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.STUDENT_NOT_FOUND);
+        }
+        return studentProfile;
+    }
+
+    private void validateParentChildRelation(Long parentUserId, StudentProfile studentProfile) {
+        if (studentProfile.getUserId() == null || !parentStudentRelationRepository.existsByParentIdAndStudentIdAndStatus(
+                parentUserId,
+                studentProfile.getUserId(),
+                ParentStudentRelationStatus.ACTIVE
+        )) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private List<AttendanceAcademyOptionResponse> getAcademyOptions(List<StudentProfile> profiles) {
+        List<Long> academyIds = profiles.stream()
+                .map(StudentProfile::getAcademyId)
+                .distinct()
+                .toList();
+        if (academyIds.isEmpty()) {
+            return List.of();
+        }
+        return academyRepository.findAllById(academyIds)
+                .stream()
+                .sorted(Comparator.comparing(Academy::getName).thenComparing(Academy::getId))
+                .map(AttendanceAcademyOptionResponse::from)
+                .toList();
+    }
+
+    private List<ReadableAttendanceRecord> findRecords(List<StudentProfile> profiles, Long academyId, DateRange dateRange) {
+        if (profiles.isEmpty()) {
+            return List.of();
+        }
+        List<AttendanceRecord> records = recordRepository.findReadableStudentRecords(
+                profiles.stream().map(StudentProfile::getId).toList(),
+                academyId,
+                dateRange.startDate(),
+                dateRange.endDate()
+        );
+        if (records.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, StudentProfile> profileById = profiles.stream()
+                .collect(Collectors.toMap(StudentProfile::getId, Function.identity()));
+        Map<Long, AttendanceSession> sessionById = sessionRepository.findAllById(
+                        records.stream().map(AttendanceRecord::getAttendanceSessionId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(AttendanceSession::getId, Function.identity()));
+        Map<Long, AcademyClass> classById = classRepository.findAllById(
+                        sessionById.values().stream().map(AttendanceSession::getAcademyClassId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(AcademyClass::getId, Function.identity()));
+        Map<Long, Academy> academyById = academyRepository.findAllById(
+                        sessionById.values().stream().map(AttendanceSession::getAcademyId).distinct().toList()
+                )
+                .stream()
+                .collect(Collectors.toMap(Academy::getId, Function.identity()));
+
+        return records.stream()
+                .map(record -> {
+                    AttendanceSession session = sessionById.get(record.getAttendanceSessionId());
+                    StudentProfile studentProfile = profileById.get(record.getStudentProfileId());
+                    AcademyClass academyClass = session == null ? null : classById.get(session.getAcademyClassId());
+                    Academy academy = session == null ? null : academyById.get(session.getAcademyId());
+                    if (session == null || studentProfile == null || academyClass == null || academy == null) {
+                        return null;
+                    }
+                    return new ReadableAttendanceRecord(record, session, studentProfile, academyClass, academy);
+                })
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private DateRange resolveDateRange(Integer year, Integer month) {
+        YearMonth yearMonth = year == null || month == null
+                ? YearMonth.now()
+                : YearMonth.of(year, month);
+        return new DateRange(yearMonth.atDay(1), yearMonth.atEndOfMonth());
+    }
+
     private AcademyClassDayOfWeek toAcademyDayOfWeek(DayOfWeek dayOfWeek) {
         return AcademyClassDayOfWeek.valueOf(dayOfWeek.name());
     }
 
-    private record DateRange(LocalDate start, LocalDate end) {
+    private record DateRange(LocalDate startDate, LocalDate endDate) {
     }
 
-    private record RecordContext(
+    private record ReadableAttendanceRecord(
             AttendanceRecord record,
             AttendanceSession session,
+            StudentProfile studentProfile,
             AcademyClass academyClass,
             Academy academy
     ) {

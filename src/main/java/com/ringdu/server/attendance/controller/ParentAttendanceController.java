@@ -16,22 +16,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/parent/children/{studentProfileId}")
+@RequestMapping("/api/parent")
 @RequiredArgsConstructor
 public class ParentAttendanceController {
 
     private final AttendanceService attendanceService;
 
-    @GetMapping("/academies")
-    @PreAuthorize("hasRole('PARENT')")
-    public ApiResponse<List<AttendanceAcademyOptionResponse>> getChildAcademies(
-            @AuthenticationPrincipal CustomUserPrincipal principal,
-            @PathVariable Long studentProfileId
-    ) {
-        return ApiResponse.success(attendanceService.getParentChildAcademies(principal.userId(), studentProfileId));
-    }
-
-    @GetMapping("/attendance-records")
+    @GetMapping("/children/{studentProfileId}/attendance-records")
     @PreAuthorize("hasRole('PARENT')")
     public ApiResponse<List<ParentChildAttendanceRecordResponse>> getChildAttendanceRecords(
             @AuthenticationPrincipal CustomUserPrincipal principal,
@@ -47,5 +38,14 @@ public class ParentAttendanceController {
                 year,
                 month
         ));
+    }
+
+    @GetMapping("/children/{studentProfileId}/academies")
+    @PreAuthorize("hasRole('PARENT')")
+    public ApiResponse<List<AttendanceAcademyOptionResponse>> getChildAcademies(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentProfileId
+    ) {
+        return ApiResponse.success(attendanceService.getParentChildAcademies(principal.userId(), studentProfileId));
     }
 }

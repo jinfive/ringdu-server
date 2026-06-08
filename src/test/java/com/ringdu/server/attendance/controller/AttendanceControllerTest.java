@@ -243,130 +243,211 @@ class AttendanceControllerTest {
     }
 
     @Test
-    @DisplayName("STUDENT가 본인 학원 목록과 출석 기록을 조회할 수 있다")
-    void studentCanReadOwnAcademiesAndAttendanceRecords() throws Exception {
-        AcademyContext academyContext = academyContext("attendance-student-self@ringdu.com");
-        User teacher = createConnectedTeacher(academyContext, "teacher-attendance-student-self@ringdu.com");
-        Long classroomId = createClassroom(academyContext, "학생조회 강의실");
-        Long classId = createClass(academyContext, classroomId, teacher.getId());
-        User studentUser = saveUser("attendance-student-user@ringdu.com", Role.STUDENT);
-        StudentProfile studentProfile = createStudent(academyContext, "학생조회", studentUser.getId());
-        addStudent(academyContext, classId, studentProfile.getId());
-        AttendanceFixture fixture = new AttendanceFixture(
-                academyContext.token(),
-                accessToken(teacher),
-                classId,
-                studentProfile.getId(),
-                studentProfile.getId()
-        );
+    @DisplayName("STUDENT가 본인 출석 기록을 조회할 수 있다")
+    void studentCanReadOwnAttendanceRecords() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-student-own@ringdu.com");
         Long sessionId = createSession(fixture);
-        saveSingleRecord(fixture, sessionId, AttendanceRecordStatus.LATE, "ㅋㅋㅋ");
-
-        mockMvc.perform(get("/api/student/academies")
-                        .header("Authorization", "Bearer " + accessToken(studentUser)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].academyId").value(academyContext.academy().getId()))
-                .andExpect(jsonPath("$.data[0].academyName").value("링듀수학학원"));
+        saveRecords(fixture, sessionId);
 
         mockMvc.perform(get("/api/student/attendance-records")
-                        .queryParam("year", String.valueOf(LocalDate.now().getYear()))
-                        .queryParam("month", String.valueOf(LocalDate.now().getMonthValue()))
-                        .header("Authorization", "Bearer " + accessToken(studentUser)))
+                        .param("year", String.valueOf(LocalDate.now().getYear()))
+                        .param("month", String.valueOf(LocalDate.now().getMonthValue()))
+                        .header("Authorization", "Bearer " + fixture.firstStudentToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].attendanceDate").value(LocalDate.now().toString()))
-                .andExpect(jsonPath("$.data[0].academyId").value(academyContext.academy().getId()))
-                .andExpect(jsonPath("$.data[0].classId").value(classId))
-                .andExpect(jsonPath("$.data[0].status").value("LATE"))
-                .andExpect(jsonPath("$.data[0].statusLabel").value("지각"))
-                .andExpect(jsonPath("$.data[0].memo").value("ㅋㅋㅋ"));
-    }
-
-    @Test
-    @DisplayName("STUDENT가 연결된 StudentProfile이 없어도 출석 조회는 빈 배열을 반환한다")
-    void studentWithoutProfileGetsEmptyAttendanceResponses() throws Exception {
-        User studentUser = saveUser("attendance-student-empty@ringdu.com", Role.STUDENT);
-
-        mockMvc.perform(get("/api/student/academies")
-                        .header("Authorization", "Bearer " + accessToken(studentUser)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(0));
-
-        mockMvc.perform(get("/api/student/attendance-records")
-                        .header("Authorization", "Bearer " + accessToken(studentUser)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(0));
-    }
-
-    @Test
-    @DisplayName("PARENT가 연결된 자녀 목록과 자녀 출석 기록을 조회할 수 있다")
-    void parentCanReadChildOptionsAcademiesAndAttendanceRecords() throws Exception {
-        AcademyContext academyContext = academyContext("attendance-parent-child@ringdu.com");
-        User teacher = createConnectedTeacher(academyContext, "teacher-attendance-parent-child@ringdu.com");
-        Long classroomId = createClassroom(academyContext, "부모조회 강의실");
-        Long classId = createClass(academyContext, classroomId, teacher.getId());
-        User studentUser = saveUser("attendance-child-user@ringdu.com", Role.STUDENT);
-        User parentUser = saveUser("attendance-parent-user@ringdu.com", Role.PARENT);
-        parentStudentRelationRepository.save(ParentStudentRelation.create(parentUser, studentUser));
-        StudentProfile studentProfile = createStudent(academyContext, "자녀조회", studentUser.getId());
-        addStudent(academyContext, classId, studentProfile.getId());
-        AttendanceFixture fixture = new AttendanceFixture(
-                academyContext.token(),
-                accessToken(teacher),
-                classId,
-                studentProfile.getId(),
-                studentProfile.getId()
-        );
-        Long sessionId = createSession(fixture);
-        saveSingleRecord(fixture, sessionId, AttendanceRecordStatus.PRESENT, "");
-
-        mockMvc.perform(get("/api/parent/students")
-                        .header("Authorization", "Bearer " + accessToken(parentUser)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].studentProfiles.length()").value(1))
-                .andExpect(jsonPath("$.data[0].studentProfiles[0].studentProfileId").value(studentProfile.getId()))
-                .andExpect(jsonPath("$.data[0].studentProfiles[0].studentName").value("자녀조회"));
-
-        mockMvc.perform(get("/api/parent/children/{studentProfileId}/academies", studentProfile.getId())
-                        .header("Authorization", "Bearer " + accessToken(parentUser)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].academyId").value(academyContext.academy().getId()));
-
-        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", studentProfile.getId())
-                        .queryParam("year", String.valueOf(LocalDate.now().getYear()))
-                        .queryParam("month", String.valueOf(LocalDate.now().getMonthValue()))
-                        .header("Authorization", "Bearer " + accessToken(parentUser)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].studentProfileId").value(studentProfile.getId()))
-                .andExpect(jsonPath("$.data[0].studentName").value("자녀조회"))
+                .andExpect(jsonPath("$.data[0].academyId").value(fixture.academyId()))
+                .andExpect(jsonPath("$.data[0].classId").value(fixture.classId()))
                 .andExpect(jsonPath("$.data[0].status").value("PRESENT"))
                 .andExpect(jsonPath("$.data[0].statusLabel").value("출석"));
     }
 
     @Test
-    @DisplayName("PARENT는 연결되지 않은 자녀 출석 기록을 조회할 수 없다")
-    void parentCannotReadUnconnectedChildAttendanceRecords() throws Exception {
-        AcademyContext academyContext = academyContext("attendance-parent-forbidden@ringdu.com");
-        User studentUser = saveUser("attendance-forbidden-child@ringdu.com", Role.STUDENT);
-        User parentUser = saveUser("attendance-forbidden-parent@ringdu.com", Role.PARENT);
-        StudentProfile studentProfile = createStudent(academyContext, "연결안됨", studentUser.getId());
+    @DisplayName("STUDENT가 연결된 StudentProfile이 없어도 출석 조회는 빈 배열을 반환한다")
+    void studentWithoutProfileGetsEmptyAttendanceResponses() throws Exception {
+        User student = saveUser("attendance-student-empty@ringdu.com", Role.STUDENT);
+        String studentToken = accessToken(student);
 
-        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", studentProfile.getId())
-                        .header("Authorization", "Bearer " + accessToken(parentUser)))
+        mockMvc.perform(get("/api/student/academies")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mockMvc.perform(get("/api/student/attendance-records")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("STUDENT는 다른 학생 출석 기록을 볼 수 없다")
+    void studentCannotReadOtherStudentAttendanceRecords() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-student-other@ringdu.com");
+        Long sessionId = createSession(fixture);
+        saveRecords(fixture, sessionId);
+
+        mockMvc.perform(get("/api/student/attendance-records")
+                        .param("year", String.valueOf(LocalDate.now().getYear()))
+                        .param("month", String.valueOf(LocalDate.now().getMonthValue()))
+                        .header("Authorization", "Bearer " + fixture.secondStudentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].status").value("LATE"))
+                .andExpect(jsonPath("$.data[0].statusLabel").value("지각"));
+    }
+
+    @Test
+    @DisplayName("STUDENT 출석 기록 year/month 필터가 동작한다")
+    void studentAttendanceYearMonthFilterWorks() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-student-month@ringdu.com");
+        Long todaySessionId = createSession(fixture, LocalDate.now());
+        Long previousSessionId = createSession(fixture, LocalDate.now().minusMonths(1));
+        saveRecords(fixture, todaySessionId);
+        saveRecords(fixture, previousSessionId);
+
+        mockMvc.perform(get("/api/student/attendance-records")
+                        .param("year", String.valueOf(LocalDate.now().getYear()))
+                        .param("month", String.valueOf(LocalDate.now().getMonthValue()))
+                        .header("Authorization", "Bearer " + fixture.firstStudentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].attendanceDate").value(LocalDate.now().toString()));
+    }
+
+    @Test
+    @DisplayName("STUDENT 출석 기록 academyId 필터가 동작한다")
+    void studentAttendanceAcademyFilterWorks() throws Exception {
+        AttendanceFixture firstAcademy = attendanceFixture("attendance-student-academy-a@ringdu.com");
+        AttendanceFixture secondAcademy = attendanceFixture("attendance-student-academy-b@ringdu.com", firstAcademy.firstStudentUser());
+        Long firstSessionId = createSession(firstAcademy);
+        Long secondSessionId = createSession(secondAcademy);
+        saveRecords(firstAcademy, firstSessionId);
+        saveRecords(secondAcademy, secondSessionId);
+
+        mockMvc.perform(get("/api/student/attendance-records")
+                        .param("academyId", String.valueOf(secondAcademy.academyId()))
+                        .param("year", String.valueOf(LocalDate.now().getYear()))
+                        .param("month", String.valueOf(LocalDate.now().getMonthValue()))
+                        .header("Authorization", "Bearer " + firstAcademy.firstStudentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].academyId").value(secondAcademy.academyId()));
+
+        mockMvc.perform(get("/api/student/academies")
+                        .header("Authorization", "Bearer " + firstAcademy.firstStudentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("PARENT가 연결된 자녀 출석 기록을 조회할 수 있다")
+    void parentCanReadConnectedChildAttendanceRecords() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-parent-own@ringdu.com");
+        User parent = createParentRelation("attendance-parent-own-parent@ringdu.com", fixture.firstStudentUser());
+        Long sessionId = createSession(fixture);
+        saveRecords(fixture, sessionId);
+
+        mockMvc.perform(get("/api/parent/students")
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].studentProfiles.length()").value(1))
+                .andExpect(jsonPath("$.data[0].studentProfiles[0].studentProfileId")
+                        .value(fixture.firstStudentId()))
+                .andExpect(jsonPath("$.data[0].studentProfiles[0].studentName").value("김학생"));
+
+        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", fixture.firstStudentId())
+                        .param("year", String.valueOf(LocalDate.now().getYear()))
+                        .param("month", String.valueOf(LocalDate.now().getMonthValue()))
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.firstStudentId()))
+                .andExpect(jsonPath("$.data[0].studentName").value("김학생"))
+                .andExpect(jsonPath("$.data[0].status").value("PRESENT"));
+    }
+
+    @Test
+    @DisplayName("PARENT가 연결된 자녀의 출석 기록이 없으면 빈 배열을 조회한다")
+    void parentGetsEmptyAttendanceRecordsForConnectedChildWithoutRecords() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-parent-empty@ringdu.com");
+        User parent = createParentRelation("attendance-parent-empty-parent@ringdu.com", fixture.firstStudentUser());
+
+        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", fixture.firstStudentId())
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("PARENT는 연결되지 않은 학생 출석 기록을 조회할 수 없다")
+    void parentCannotReadUnconnectedChildAttendanceRecords() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-parent-forbidden@ringdu.com");
+        User parent = saveUser("attendance-parent-forbidden-parent@ringdu.com", Role.PARENT);
+        Long sessionId = createSession(fixture);
+        saveRecords(fixture, sessionId);
+
+        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", fixture.firstStudentId())
+                        .header("Authorization", "Bearer " + accessToken(parent)))
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    @DisplayName("PARENT 출석 기록 year/month 필터가 동작한다")
+    void parentAttendanceYearMonthFilterWorks() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-parent-month@ringdu.com");
+        User parent = createParentRelation("attendance-parent-month-parent@ringdu.com", fixture.firstStudentUser());
+        Long todaySessionId = createSession(fixture, LocalDate.now());
+        Long previousSessionId = createSession(fixture, LocalDate.now().minusMonths(1));
+        saveRecords(fixture, todaySessionId);
+        saveRecords(fixture, previousSessionId);
+
+        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", fixture.firstStudentId())
+                        .param("year", String.valueOf(LocalDate.now().getYear()))
+                        .param("month", String.valueOf(LocalDate.now().getMonthValue()))
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].attendanceDate").value(LocalDate.now().toString()));
+    }
+
+    @Test
+    @DisplayName("PARENT 출석 기록 academyId 필터가 동작한다")
+    void parentAttendanceAcademyFilterWorks() throws Exception {
+        AttendanceFixture firstAcademy = attendanceFixture("attendance-parent-academy-a@ringdu.com");
+        AttendanceFixture secondAcademy = attendanceFixture("attendance-parent-academy-b@ringdu.com", firstAcademy.firstStudentUser());
+        User parent = createParentRelation("attendance-parent-academy-parent@ringdu.com", firstAcademy.firstStudentUser());
+        Long firstSessionId = createSession(firstAcademy);
+        Long secondSessionId = createSession(secondAcademy);
+        saveRecords(firstAcademy, firstSessionId);
+        saveRecords(secondAcademy, secondSessionId);
+
+        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", secondAcademy.firstStudentId())
+                        .param("academyId", String.valueOf(secondAcademy.academyId()))
+                        .param("year", String.valueOf(LocalDate.now().getYear()))
+                        .param("month", String.valueOf(LocalDate.now().getMonthValue()))
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].academyId").value(secondAcademy.academyId()));
+
+        mockMvc.perform(get("/api/parent/children/{studentProfileId}/academies", secondAcademy.firstStudentId())
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].academyId").value(secondAcademy.academyId()));
+    }
+
     private Long createSession(AttendanceFixture fixture) throws Exception {
+        return createSession(fixture, LocalDate.now());
+    }
+
+    private Long createSession(AttendanceFixture fixture, LocalDate attendanceDate) throws Exception {
         mockMvc.perform(post("/api/teacher/classes/{classId}/attendance-sessions", fixture.classId())
                         .header("Authorization", "Bearer " + fixture.teacherToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AttendanceSessionCreateRequest(LocalDate.now()))))
+                        .content(objectMapper.writeValueAsString(new AttendanceSessionCreateRequest(attendanceDate))))
                 .andExpect(status().isOk());
-        return attendanceSessionRepository.findByAcademyClassIdAndAttendanceDate(fixture.classId(), LocalDate.now())
+        return attendanceSessionRepository.findByAcademyClassIdAndAttendanceDate(fixture.classId(), attendanceDate)
                 .orElseThrow()
                 .getId();
     }
@@ -383,37 +464,33 @@ class AttendanceControllerTest {
                 .andExpect(status().isOk());
     }
 
-    private void saveSingleRecord(
-            AttendanceFixture fixture,
-            Long sessionId,
-            AttendanceRecordStatus recordStatus,
-            String memo
-    ) throws Exception {
-        AttendanceRecordSaveRequest request = new AttendanceRecordSaveRequest(List.of(
-                new AttendanceRecordSaveRequest.RecordItem(fixture.firstStudentId(), recordStatus, memo)
-        ));
-        mockMvc.perform(put("/api/teacher/attendance-sessions/{sessionId}/records", sessionId)
-                        .header("Authorization", "Bearer " + fixture.teacherToken())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk());
+    private AttendanceFixture attendanceFixture(String email) throws Exception {
+        return attendanceFixture(email, null);
     }
 
-    private AttendanceFixture attendanceFixture(String email) throws Exception {
+    private AttendanceFixture attendanceFixture(String email, User existingFirstStudentUser) throws Exception {
         AcademyContext academyContext = academyContext(email);
         User teacher = createConnectedTeacher(academyContext, "teacher-" + email);
         Long classroomId = createClassroom(academyContext, "1강의실");
         Long classId = createClass(academyContext, classroomId, teacher.getId());
-        StudentProfile firstStudent = createStudent(academyContext, "김학생");
-        StudentProfile secondStudent = createStudent(academyContext, "이학생");
+        User firstStudentUser = existingFirstStudentUser == null
+                ? saveUser("student-first-" + email, Role.STUDENT)
+                : existingFirstStudentUser;
+        User secondStudentUser = saveUser("student-second-" + email, Role.STUDENT);
+        StudentProfile firstStudent = createStudent(academyContext, "김학생", firstStudentUser.getId());
+        StudentProfile secondStudent = createStudent(academyContext, "이학생", secondStudentUser.getId());
         addStudent(academyContext, classId, firstStudent.getId());
         addStudent(academyContext, classId, secondStudent.getId());
         return new AttendanceFixture(
                 academyContext.token(),
                 accessToken(teacher),
+                academyContext.academy().getId(),
                 classId,
                 firstStudent.getId(),
-                secondStudent.getId()
+                secondStudent.getId(),
+                firstStudentUser,
+                accessToken(firstStudentUser),
+                accessToken(secondStudentUser)
         );
     }
 
@@ -510,6 +587,12 @@ class AttendanceControllerTest {
                 .build());
     }
 
+    private User createParentRelation(String parentEmail, User studentUser) {
+        User parent = saveUser(parentEmail, Role.PARENT);
+        parentStudentRelationRepository.save(ParentStudentRelation.create(parent, studentUser));
+        return parent;
+    }
+
     private AcademySignupRequest academySignupRequest(String email) {
         return new AcademySignupRequest(
                 email,
@@ -535,9 +618,13 @@ class AttendanceControllerTest {
     private record AttendanceFixture(
             String academyToken,
             String teacherToken,
+            Long academyId,
             Long classId,
             Long firstStudentId,
-            Long secondStudentId
+            Long secondStudentId,
+            User firstStudentUser,
+            String firstStudentToken,
+            String secondStudentToken
     ) {
     }
 }

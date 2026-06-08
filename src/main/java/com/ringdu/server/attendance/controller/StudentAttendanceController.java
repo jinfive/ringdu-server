@@ -21,14 +21,6 @@ public class StudentAttendanceController {
 
     private final AttendanceService attendanceService;
 
-    @GetMapping("/academies")
-    @PreAuthorize("hasRole('STUDENT')")
-    public ApiResponse<List<AttendanceAcademyOptionResponse>> getAcademies(
-            @AuthenticationPrincipal CustomUserPrincipal principal
-    ) {
-        return ApiResponse.success(attendanceService.getStudentAcademies(principal.userId()));
-    }
-
     @GetMapping("/attendance-records")
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<List<StudentAttendanceRecordResponse>> getAttendanceRecords(
@@ -37,6 +29,19 @@ public class StudentAttendanceController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month
     ) {
-        return ApiResponse.success(attendanceService.getStudentAttendanceRecords(principal.userId(), academyId, year, month));
+        return ApiResponse.success(attendanceService.getStudentAttendanceRecords(
+                principal.userId(),
+                academyId,
+                year,
+                month
+        ));
+    }
+
+    @GetMapping("/academies")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ApiResponse<List<AttendanceAcademyOptionResponse>> getAcademies(
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        return ApiResponse.success(attendanceService.getStudentAcademies(principal.userId()));
     }
 }

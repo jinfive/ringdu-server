@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface StudentProfileRepository extends JpaRepository<StudentProfile, Long> {
@@ -32,4 +33,8 @@ public interface StudentProfileRepository extends JpaRepository<StudentProfile, 
 
     long countByAcademyId(Long academyId);
     boolean existsByAcademyIdAndUserId(Long academyId, Long userId);
+
+    List<StudentProfile> findAllByUserIdAndStatusOrderByNameAscIdAsc(Long userId, StudentStatus status);
+
+    List<StudentProfile> findAllByUserIdInAndStatusOrderByNameAscIdAsc(Collection<Long> userIds, StudentStatus status);
 }
