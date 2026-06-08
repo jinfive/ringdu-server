@@ -13,8 +13,8 @@ public record ParentConsultationOptionResponse(
     public record TeacherOption(
             Long teacherUserId,
             String teacherName,
-            Long classId,
-            String className
+            List<String> classNames,
+            boolean available
     ) {
     }
 }

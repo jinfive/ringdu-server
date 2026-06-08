@@ -6,6 +6,8 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 
 public record ConsultationAvailabilityRequest(
+        Long academyId,
+        Long teacherUserId,
         @NotNull DayOfWeek dayOfWeek,
         @NotNull LocalTime startTime,
         @NotNull LocalTime endTime,

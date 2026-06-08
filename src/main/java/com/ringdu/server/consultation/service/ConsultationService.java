@@ -14,6 +14,7 @@ import com.ringdu.server.consultation.dto.ConsultationAvailabilityResponse;
 import com.ringdu.server.consultation.dto.ConsultationMemoCreateRequest;
 import com.ringdu.server.consultation.dto.ConsultationMemoResponse;
 import com.ringdu.server.consultation.dto.ConsultationMemoUpdateRequest;
+import com.ringdu.server.consultation.dto.ParentConsultationDateAvailabilityResponse;
 import com.ringdu.server.consultation.dto.ConsultationRequestActionRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestCreateRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestResponse;
@@ -42,6 +43,8 @@ import com.ringdu.server.student.repository.StudentProfileRepository;
 import com.ringdu.server.user.entity.User;
 import com.ringdu.server.user.repository.UserRepository;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,6 +58,11 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ConsultationService {
 
+    private static final List<ConsultationRequestStatus> OCCUPIED_STATUSES = List.of(
+            ConsultationRequestStatus.REQUESTED,
+            ConsultationRequestStatus.APPROVED
+    );
+
     private final AcademyRepository academyRepository;
     private final AcademyMemberRepository academyMemberRepository;
     private final AcademyClassRepository classRepository;
@@ -67,24 +75,18 @@ public class ConsultationService {
     private final ConsultationMemoRepository memoRepository;
 
     @Transactional(readOnly = true)
-    public List<ConsultationAvailabilityResponse> getAcademyAvailability(Long academyUserId) {
+    public List<ConsultationAvailabilityResponse> getAcademyAvailability(Long academyUserId, Long teacherUserId) {
         Academy academy = getAcademy(academyUserId);
-        return availabilityRepository.findAllByAcademyIdOrderByDayOfWeekAscStartTimeAscIdAsc(academy.getId())
+        List<ConsultationAvailability> availabilities = teacherUserId == null
+                ? availabilityRepository.findAllByAcademyIdOrderByTeacherUserIdAscDayOfWeekAscStartTimeAscIdAsc(academy.getId())
+                : availabilityRepository.findAllByAcademyIdAndTeacherUserIdOrderByDayOfWeekAscStartTimeAscIdAsc(
+                        academy.getId(),
+                        teacherUserId
+                );
+        return availabilities
                 .stream()
-                .map(ConsultationAvailabilityResponse::of)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<ConsultationAvailabilityResponse> getPublicAvailability(Long academyId, ConsultationType type) {
-        ConsultationType consultationType = type == null ? ConsultationType.ENROLLED_STUDENT : type;
-        return availabilityRepository.findActiveByAcademyIdAndConsultationType(
-                        academyId,
-                        consultationType,
-                        ConsultationAvailabilityStatus.ACTIVE
-                )
-                .stream()
-                .map(ConsultationAvailabilityResponse::of)
+                .filter(availability -> availability.getTeacherUserId() != null)
+                .map(this::toAvailabilityResponse)
                 .toList();
     }
 
@@ -94,16 +96,19 @@ public class ConsultationService {
             ConsultationAvailabilityRequest request
     ) {
         Academy academy = getAcademy(academyUserId);
+        Long teacherUserId = requireTeacherUserId(request.teacherUserId());
+        validateTeacher(academy.getId(), teacherUserId);
         validateAvailabilityTime(request);
-        validateAvailabilityOverlap(academy.getId(), request, null);
+        validateAvailabilityOverlap(academy.getId(), teacherUserId, request, null);
         ConsultationAvailability availability = availabilityRepository.save(ConsultationAvailability.create(
                 academy.getId(),
+                teacherUserId,
                 request.dayOfWeek(),
                 request.startTime(),
                 request.endTime(),
                 request.consultationType()
         ));
-        return ConsultationAvailabilityResponse.of(availability);
+        return toAvailabilityResponse(availability);
     }
 
     @Transactional
@@ -115,10 +120,14 @@ public class ConsultationService {
         Academy academy = getAcademy(academyUserId);
         ConsultationAvailability availability = availabilityRepository.findByIdAndAcademyId(availabilityId, academy.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_AVAILABILITY_NOT_FOUND));
+        if (!Objects.equals(availability.getTeacherUserId(), requireTeacherUserId(request.teacherUserId()))) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        validateTeacher(academy.getId(), availability.getTeacherUserId());
         validateAvailabilityTime(request);
-        validateAvailabilityOverlap(academy.getId(), request, availability.getId());
+        validateAvailabilityOverlap(academy.getId(), availability.getTeacherUserId(), request, availability.getId());
         availability.update(request.dayOfWeek(), request.startTime(), request.endTime(), request.consultationType());
-        return ConsultationAvailabilityResponse.of(availability);
+        return toAvailabilityResponse(availability);
     }
 
     @Transactional
@@ -127,7 +136,61 @@ public class ConsultationService {
         ConsultationAvailability availability = availabilityRepository.findByIdAndAcademyId(availabilityId, academy.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_AVAILABILITY_NOT_FOUND));
         availability.deactivate();
-        return ConsultationAvailabilityResponse.of(availability);
+        return toAvailabilityResponse(availability);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConsultationAvailabilityResponse> getTeacherAvailability(Long teacherUserId) {
+        return availabilityRepository.findAllByTeacherUserIdOrderByAcademyIdAscDayOfWeekAscStartTimeAscIdAsc(teacherUserId)
+                .stream()
+                .map(this::toAvailabilityResponse)
+                .toList();
+    }
+
+    @Transactional
+    public ConsultationAvailabilityResponse createTeacherAvailability(
+            Long teacherUserId,
+            ConsultationAvailabilityRequest request
+    ) {
+        Long academyId = requireAcademyId(request.academyId());
+        validateTeacher(academyId, teacherUserId);
+        validateAvailabilityTime(request);
+        validateAvailabilityOverlap(academyId, teacherUserId, request, null);
+        ConsultationAvailability availability = availabilityRepository.save(ConsultationAvailability.create(
+                academyId,
+                teacherUserId,
+                request.dayOfWeek(),
+                request.startTime(),
+                request.endTime(),
+                request.consultationType()
+        ));
+        return toAvailabilityResponse(availability);
+    }
+
+    @Transactional
+    public ConsultationAvailabilityResponse updateTeacherAvailability(
+            Long teacherUserId,
+            Long availabilityId,
+            ConsultationAvailabilityRequest request
+    ) {
+        ConsultationAvailability availability = availabilityRepository.findByIdAndTeacherUserId(availabilityId, teacherUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_AVAILABILITY_NOT_FOUND));
+        if (!Objects.equals(availability.getAcademyId(), requireAcademyId(request.academyId()))) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        validateTeacher(availability.getAcademyId(), teacherUserId);
+        validateAvailabilityTime(request);
+        validateAvailabilityOverlap(availability.getAcademyId(), teacherUserId, request, availabilityId);
+        availability.update(request.dayOfWeek(), request.startTime(), request.endTime(), request.consultationType());
+        return toAvailabilityResponse(availability);
+    }
+
+    @Transactional
+    public ConsultationAvailabilityResponse deleteTeacherAvailability(Long teacherUserId, Long availabilityId) {
+        ConsultationAvailability availability = availabilityRepository.findByIdAndTeacherUserId(availabilityId, teacherUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_AVAILABILITY_NOT_FOUND));
+        availability.deactivate();
+        return toAvailabilityResponse(availability);
     }
 
     @Transactional(readOnly = true)
@@ -168,6 +231,67 @@ public class ConsultationService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ParentConsultationDateAvailabilityResponse> getParentTeacherAvailability(
+            Long parentUserId,
+            Long academyId,
+            Long teacherUserId,
+            Integer year,
+            Integer month
+    ) {
+        YearMonth targetMonth;
+        try {
+            targetMonth = YearMonth.of(year, month);
+        } catch (RuntimeException exception) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        validateTeacher(academyId, teacherUserId);
+        validateParentHasAssignedTeacher(parentUserId, academyId, teacherUserId);
+
+        List<ConsultationAvailability> availabilities =
+                availabilityRepository.findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
+                        academyId,
+                        teacherUserId,
+                        ConsultationType.ENROLLED_STUDENT,
+                        ConsultationAvailabilityStatus.ACTIVE
+                );
+        List<ConsultationRequest> occupiedRequests = requestRepository.findOccupiedRequests(
+                academyId,
+                teacherUserId,
+                targetMonth.atDay(1),
+                targetMonth.atEndOfMonth(),
+                OCCUPIED_STATUSES
+        );
+        List<ParentConsultationDateAvailabilityResponse> dates = new ArrayList<>();
+        for (int day = 1; day <= targetMonth.lengthOfMonth(); day++) {
+            LocalDate date = targetMonth.atDay(day);
+            List<ParentConsultationDateAvailabilityResponse.TimeSlot> slots = availabilities.stream()
+                    .filter(availability -> availability.getDayOfWeek() == date.getDayOfWeek())
+                    .map(availability -> {
+                        boolean occupied = occupiedRequests.stream().anyMatch(request ->
+                                request.getRequestedDate().equals(date)
+                                        && overlaps(
+                                                availability.getStartTime(),
+                                                availability.getEndTime(),
+                                                request.getRequestedStartTime(),
+                                                request.getRequestedEndTime()
+                                        )
+                        );
+                        return new ParentConsultationDateAvailabilityResponse.TimeSlot(
+                                availability.getStartTime(),
+                                availability.getEndTime(),
+                                !occupied,
+                                occupied ? "이미 예약된 시간입니다." : null
+                        );
+                    })
+                    .toList();
+            if (!slots.isEmpty()) {
+                dates.add(new ParentConsultationDateAvailabilityResponse(date, date.getDayOfWeek(), slots));
+            }
+        }
+        return dates;
+    }
+
     @Transactional
     public ConsultationRequestResponse createParentRequest(Long parentUserId, ConsultationRequestCreateRequest request) {
         StudentProfile studentProfile = getActiveStudentProfile(request.studentProfileId());
@@ -177,6 +301,7 @@ public class ConsultationService {
         }
         validateRequestTime(request);
         validateTeacher(request.academyId(), request.teacherUserId());
+        validateTeacherAssignedStudent(request.teacherUserId(), request.studentProfileId());
         validateRequestAvailability(request);
         validateDuplicateRequest(request);
 
@@ -434,11 +559,13 @@ public class ConsultationService {
 
     private void validateAvailabilityOverlap(
             Long academyId,
+            Long teacherUserId,
             ConsultationAvailabilityRequest request,
             Long excludedAvailabilityId
     ) {
         boolean overlapped = availabilityRepository.existsOverlappingActive(
                 academyId,
+                teacherUserId,
                 request.dayOfWeek(),
                 request.startTime(),
                 request.endTime(),
@@ -456,8 +583,9 @@ public class ConsultationService {
     }
 
     private void validateRequestAvailability(ConsultationRequestCreateRequest request) {
-        boolean available = availabilityRepository.findActiveByAcademyIdAndConsultationType(
+        boolean available = availabilityRepository.findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
                         request.academyId(),
+                        request.teacherUserId(),
                         ConsultationType.ENROLLED_STUDENT,
                         ConsultationAvailabilityStatus.ACTIVE
                 )
@@ -473,13 +601,13 @@ public class ConsultationService {
     }
 
     private void validateDuplicateRequest(ConsultationRequestCreateRequest request) {
-        boolean exists = requestRepository.existsByAcademyIdAndStudentProfileIdAndRequestedDateAndRequestedStartTimeAndRequestedEndTimeAndStatus(
+        boolean exists = requestRepository.existsOccupiedTime(
                 request.academyId(),
-                request.studentProfileId(),
+                request.teacherUserId(),
                 request.requestedDate(),
                 request.requestedStartTime(),
                 request.requestedEndTime(),
-                ConsultationRequestStatus.REQUESTED
+                OCCUPIED_STATUSES
         );
         if (exists) {
             throw new BusinessException(ErrorCode.CONSULTATION_REQUEST_ALREADY_EXISTS);
@@ -501,9 +629,7 @@ public class ConsultationService {
     }
 
     private void validateTeacher(Long academyId, Long teacherUserId) {
-        if (teacherUserId == null) {
-            return;
-        }
+        requireTeacherUserId(teacherUserId);
         boolean connected = academyMemberRepository.existsByAcademyIdAndUserIdAndStatus(
                 academyId,
                 teacherUserId,
@@ -537,13 +663,70 @@ public class ConsultationService {
 
         return classById.values().stream()
                 .filter(academyClass -> academyClass.getTeacherUserId() != null)
-                .map(academyClass -> new ParentConsultationOptionResponse.TeacherOption(
+                .filter(academyClass -> academyMemberRepository.existsByAcademyIdAndUserIdAndStatus(
+                        profile.getAcademyId(),
                         academyClass.getTeacherUserId(),
-                        userById.get(academyClass.getTeacherUserId()).getName(),
-                        academyClass.getId(),
-                        academyClass.getName()
+                        AcademyMemberStatus.ACTIVE
                 ))
+                .collect(Collectors.groupingBy(AcademyClass::getTeacherUserId))
+                .entrySet()
+                .stream()
+                .map(entry -> new ParentConsultationOptionResponse.TeacherOption(
+                        entry.getKey(),
+                        userById.get(entry.getKey()).getName(),
+                        entry.getValue().stream().map(AcademyClass::getName).distinct().sorted().toList(),
+                        !availabilityRepository.findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
+                                profile.getAcademyId(),
+                                entry.getKey(),
+                                ConsultationType.ENROLLED_STUDENT,
+                                ConsultationAvailabilityStatus.ACTIVE
+                        ).isEmpty()
+                ))
+                .sorted((left, right) -> left.teacherName().compareTo(right.teacherName()))
                 .toList();
+    }
+
+    private void validateParentHasAssignedTeacher(Long parentUserId, Long academyId, Long teacherUserId) {
+        boolean assigned = getParentConsultationOptions(parentUserId).stream()
+                .filter(option -> Objects.equals(option.academyId(), academyId))
+                .flatMap(option -> option.teachers().stream())
+                .anyMatch(teacher -> Objects.equals(teacher.teacherUserId(), teacherUserId));
+        if (!assigned) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private boolean overlaps(
+            java.time.LocalTime firstStart,
+            java.time.LocalTime firstEnd,
+            java.time.LocalTime secondStart,
+            java.time.LocalTime secondEnd
+    ) {
+        return firstStart.isBefore(secondEnd) && secondStart.isBefore(firstEnd);
+    }
+
+    private Long requireTeacherUserId(Long teacherUserId) {
+        if (teacherUserId == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return teacherUserId;
+    }
+
+    private Long requireAcademyId(Long academyId) {
+        if (academyId == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return academyId;
+    }
+
+    private ConsultationAvailabilityResponse toAvailabilityResponse(ConsultationAvailability availability) {
+        String academyName = academyRepository.findById(availability.getAcademyId())
+                .map(Academy::getName)
+                .orElse("");
+        String teacherName = userRepository.findById(availability.getTeacherUserId())
+                .map(User::getName)
+                .orElse("");
+        return ConsultationAvailabilityResponse.of(availability, academyName, teacherName);
     }
 
     private ConsultationRequest getAcademyConsultationRequest(Long academyUserId, Long requestId) {

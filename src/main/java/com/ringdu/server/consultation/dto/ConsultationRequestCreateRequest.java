@@ -8,7 +8,7 @@ import java.time.LocalTime;
 public record ConsultationRequestCreateRequest(
         @NotNull Long academyId,
         @NotNull Long studentProfileId,
-        Long teacherUserId,
+        @NotNull Long teacherUserId,
         @NotNull LocalDate requestedDate,
         @NotNull LocalTime requestedStartTime,
         @NotNull LocalTime requestedEndTime,

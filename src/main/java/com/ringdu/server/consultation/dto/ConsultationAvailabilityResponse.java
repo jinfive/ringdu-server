@@ -8,6 +8,10 @@ import java.time.LocalTime;
 
 public record ConsultationAvailabilityResponse(
         Long availabilityId,
+        Long academyId,
+        String academyName,
+        Long teacherUserId,
+        String teacherName,
         DayOfWeek dayOfWeek,
         String dayLabel,
         LocalTime startTime,
@@ -16,9 +20,17 @@ public record ConsultationAvailabilityResponse(
         ConsultationAvailabilityStatus status
 ) {
 
-    public static ConsultationAvailabilityResponse of(ConsultationAvailability availability) {
+    public static ConsultationAvailabilityResponse of(
+            ConsultationAvailability availability,
+            String academyName,
+            String teacherName
+    ) {
         return new ConsultationAvailabilityResponse(
                 availability.getId(),
+                availability.getAcademyId(),
+                academyName,
+                availability.getTeacherUserId(),
+                teacherName,
                 availability.getDayOfWeek(),
                 dayLabel(availability.getDayOfWeek()),
                 availability.getStartTime(),

@@ -43,6 +43,7 @@
 | `overview.md` | 무료 학원 관리 서비스 방향, MVP 범위, 개발 우선순위 |
 | `user-roles.md` | `ACADEMY`, `TEACHER`, `STUDENT`, `PARENT`, `ADMIN` 역할과 권한 구조 |
 | `domain-roadmap.md` | 상담, 출석, 청구서/수납, 커뮤니티, 광고, 알림/유료화 방향 |
+| `consultation.md` | 재원생 선생님별 상담 가능 시간과 예약 정책 |
 | `onboarding.md` | 신규 사용자 가입 및 초기 설정 흐름 |
 | `auth.md` | 회원가입, 로그인, 로그아웃, 인증 흐름 |
 | `account.md` | 계정 정보, 프로필, 비밀번호 변경 |

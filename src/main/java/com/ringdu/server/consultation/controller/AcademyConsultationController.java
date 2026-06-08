@@ -9,7 +9,6 @@ import com.ringdu.server.consultation.dto.ConsultationRequestActionRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestResponse;
 import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
 import com.ringdu.server.consultation.entity.ConsultationRequestType;
-import com.ringdu.server.consultation.entity.ConsultationType;
 import com.ringdu.server.consultation.service.ConsultationService;
 import com.ringdu.server.global.common.ApiResponse;
 import com.ringdu.server.global.security.CustomUserPrincipal;
@@ -40,9 +39,10 @@ public class AcademyConsultationController {
     @GetMapping("/me/consultation-availability")
     @PreAuthorize("hasRole('ACADEMY')")
     public ApiResponse<List<ConsultationAvailabilityResponse>> getMyAvailability(
-            @AuthenticationPrincipal CustomUserPrincipal principal
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @RequestParam(required = false) Long teacherUserId
     ) {
-        return ApiResponse.success(consultationService.getAcademyAvailability(principal.userId()));
+        return ApiResponse.success(consultationService.getAcademyAvailability(principal.userId(), teacherUserId));
     }
 
     @PostMapping("/me/consultation-availability")
@@ -71,15 +71,6 @@ public class AcademyConsultationController {
             @PathVariable Long availabilityId
     ) {
         return ApiResponse.success(consultationService.deleteAcademyAvailability(principal.userId(), availabilityId));
-    }
-
-    @GetMapping("/{academyId}/consultation-availability")
-    @PreAuthorize("hasAnyRole('PARENT', 'ACADEMY')")
-    public ApiResponse<List<ConsultationAvailabilityResponse>> getAcademyAvailability(
-            @PathVariable Long academyId,
-            @RequestParam(required = false) ConsultationType type
-    ) {
-        return ApiResponse.success(consultationService.getPublicAvailability(academyId, type));
     }
 
     @GetMapping("/me/consultation-requests")
