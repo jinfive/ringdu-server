@@ -13,6 +13,7 @@ public record ConsultationRequestResponse(
         String academyName,
         Long studentProfileId,
         String studentName,
+        String parentPhone,
         Long teacherUserId,
         String teacherName,
         LocalDate requestedDate,
@@ -31,6 +32,7 @@ public record ConsultationRequestResponse(
             ConsultationRequest request,
             String academyName,
             String studentName,
+            String parentPhone,
             String teacherName
     ) {
         return new ConsultationRequestResponse(
@@ -39,6 +41,7 @@ public record ConsultationRequestResponse(
                 academyName,
                 request.getStudentProfileId(),
                 studentName,
+                parentPhone,
                 request.getTeacherUserId(),
                 teacherName,
                 request.getRequestedDate(),

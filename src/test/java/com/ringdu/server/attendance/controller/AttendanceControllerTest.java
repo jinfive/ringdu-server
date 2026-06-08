@@ -17,11 +17,11 @@ import com.ringdu.server.attendance.dto.AttendanceRecordSaveRequest;
 import com.ringdu.server.attendance.dto.AttendanceSessionCreateRequest;
 import com.ringdu.server.attendance.entity.AttendanceRecordStatus;
 import com.ringdu.server.attendance.repository.AttendanceSessionRepository;
-import com.ringdu.server.parentstudent.entity.ParentStudentRelation;
-import com.ringdu.server.parentstudent.repository.ParentStudentRelationRepository;
 import com.ringdu.server.auth.dto.AcademySignupRequest;
 import com.ringdu.server.auth.service.AuthService;
 import com.ringdu.server.global.security.jwt.JwtTokenProvider;
+import com.ringdu.server.parentstudent.entity.ParentStudentRelation;
+import com.ringdu.server.parentstudent.repository.ParentStudentRelationRepository;
 import com.ringdu.server.student.entity.StudentProfile;
 import com.ringdu.server.student.entity.StudentStatus;
 import com.ringdu.server.student.repository.StudentProfileRepository;
@@ -262,6 +262,23 @@ class AttendanceControllerTest {
     }
 
     @Test
+    @DisplayName("STUDENT가 연결된 StudentProfile이 없어도 출석 조회는 빈 배열을 반환한다")
+    void studentWithoutProfileGetsEmptyAttendanceResponses() throws Exception {
+        User student = saveUser("attendance-student-empty@ringdu.com", Role.STUDENT);
+        String studentToken = accessToken(student);
+
+        mockMvc.perform(get("/api/student/academies")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mockMvc.perform(get("/api/student/attendance-records")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
     @DisplayName("STUDENT는 다른 학생 출석 기록을 볼 수 없다")
     void studentCannotReadOtherStudentAttendanceRecords() throws Exception {
         AttendanceFixture fixture = attendanceFixture("attendance-student-other@ringdu.com");
@@ -329,6 +346,15 @@ class AttendanceControllerTest {
         Long sessionId = createSession(fixture);
         saveRecords(fixture, sessionId);
 
+        mockMvc.perform(get("/api/parent/students")
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].studentProfiles.length()").value(1))
+                .andExpect(jsonPath("$.data[0].studentProfiles[0].studentProfileId")
+                        .value(fixture.firstStudentId()))
+                .andExpect(jsonPath("$.data[0].studentProfiles[0].studentName").value("김학생"));
+
         mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", fixture.firstStudentId())
                         .param("year", String.valueOf(LocalDate.now().getYear()))
                         .param("month", String.valueOf(LocalDate.now().getMonthValue()))
@@ -338,6 +364,18 @@ class AttendanceControllerTest {
                 .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.firstStudentId()))
                 .andExpect(jsonPath("$.data[0].studentName").value("김학생"))
                 .andExpect(jsonPath("$.data[0].status").value("PRESENT"));
+    }
+
+    @Test
+    @DisplayName("PARENT가 연결된 자녀의 출석 기록이 없으면 빈 배열을 조회한다")
+    void parentGetsEmptyAttendanceRecordsForConnectedChildWithoutRecords() throws Exception {
+        AttendanceFixture fixture = attendanceFixture("attendance-parent-empty@ringdu.com");
+        User parent = createParentRelation("attendance-parent-empty-parent@ringdu.com", fixture.firstStudentUser());
+
+        mockMvc.perform(get("/api/parent/children/{studentProfileId}/attendance-records", fixture.firstStudentId())
+                        .header("Authorization", "Bearer " + accessToken(parent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test

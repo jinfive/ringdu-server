@@ -191,10 +191,18 @@ public class ConsultationService {
             ConsultationRequestStatus status,
             LocalDate from,
             LocalDate to,
-            ConsultationRequestType type
+            ConsultationRequestType type,
+            Long studentProfileId
     ) {
         Academy academy = getAcademy(academyUserId);
-        return requestRepository.findAcademyRequests(academy.getId(), status, from, to, type)
+        return requestRepository.findAcademyRequests(
+                        academy.getId(),
+                        status,
+                        from,
+                        to,
+                        type == null ? ConsultationRequestType.ENROLLED_STUDENT : type,
+                        studentProfileId
+                )
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -370,7 +378,10 @@ public class ConsultationService {
                     .map(User::getName)
                     .orElse(null);
         }
-        return ConsultationRequestResponse.of(request, academy.getName(), studentProfile.getName(), teacherName);
+        String parentPhone = userRepository.findById(request.getParentUserId())
+                .map(User::getPhone)
+                .orElse(null);
+        return ConsultationRequestResponse.of(request, academy.getName(), studentProfile.getName(), parentPhone, teacherName);
     }
 
     private StudentProfile getActiveStudentProfile(Long studentProfileId) {

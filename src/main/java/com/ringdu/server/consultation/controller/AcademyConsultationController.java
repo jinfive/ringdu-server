@@ -86,9 +86,17 @@ public class AcademyConsultationController {
             @RequestParam(required = false) ConsultationRequestStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) ConsultationRequestType type
+            @RequestParam(required = false) ConsultationRequestType type,
+            @RequestParam(required = false) Long studentProfileId
     ) {
-        return ApiResponse.success(consultationService.getAcademyRequests(principal.userId(), status, from, to, type));
+        return ApiResponse.success(consultationService.getAcademyRequests(
+                principal.userId(),
+                status,
+                from,
+                to,
+                type,
+                studentProfileId
+        ));
     }
 
     @PostMapping("/me/consultation-requests/{requestId}/approve")
