@@ -374,5 +374,46 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ---
 
+## consultation_memos
+
+### 설명
+
+재원생 상담 기록을 저장한다. 학원과 담당 선생님이 같은 학생 상담 이력에 메모를 작성할 수 있으며, 부모/학생에게 내부 메모 원문은 노출하지 않는다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 기본값 | 설명 |
+|---|---|---:|---|---|
+| id | bigint | No | auto increment | 상담 메모 ID |
+| academy_id | bigint | No |  | 학생 소속 학원 ID |
+| student_profile_id | bigint | No |  | 상담 대상 학생 프로필 ID |
+| consultation_request_id | bigint | Yes |  | 연결된 상담 요청 ID |
+| writer_user_id | bigint | No |  | 작성자 사용자 ID |
+| writer_role | varchar(20) | No |  | 작성자 역할 (`ACADEMY`, `TEACHER`) |
+| title | varchar(100) | No |  | 상담 제목 |
+| content | text | No |  | 상담 내용 |
+| next_action | text | Yes |  | 다음 조치 |
+| consultation_date | date | No |  | 상담일 |
+| status | varchar(20) | No | `ACTIVE` | 메모 상태 (`ACTIVE`, `DELETED`) |
+| created_at | timestamp | No | current timestamp | 생성 일시 |
+| updated_at | timestamp | No | current timestamp | 수정 일시 |
+
+### 인덱스
+
+| 이름 | 컬럼 | 유형 | 설명 |
+|---|---|---|---|
+| idx_consultation_memos_academy_student | academy_id, student_profile_id | Index | 학원 학생별 상담 메모 조회 |
+| idx_consultation_memos_request | consultation_request_id | Index | 상담 요청 연결 메모 조회 |
+| idx_consultation_memos_writer | writer_user_id, writer_role | Index | 작성자별 메모 조회 |
+| idx_consultation_memos_date | consultation_date | Index | 상담일 기준 정렬/조회 |
+
+### 비고
+
+- `consultation_request_id`가 있으면 예약된 상담에서 작성한 메모이다.
+- `consultation_request_id`가 없으면 학원 또는 선생님이 직접 작성한 상담 메모이다.
+- TEACHER는 자신이 담당하는 ACTIVE 수업의 ACTIVE 수강 학생 메모만 조회/작성할 수 있다.
+
+---
+
 ## users
 ... (기존 내용 유지)

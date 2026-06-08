@@ -35,4 +35,19 @@ public interface AcademyClassStudentRepository extends JpaRepository<AcademyClas
             @Param("studentProfileId") Long studentProfileId,
             @Param("status") ScheduleStatus status
     );
+
+    @Query("""
+            select count(link) > 0
+            from AcademyClassStudent link
+            join AcademyClass academyClass on academyClass.id = link.academyClassId
+            where link.studentProfileId = :studentProfileId
+              and link.status = :status
+              and academyClass.status = :status
+              and academyClass.teacherUserId = :teacherUserId
+            """)
+    boolean existsActiveStudentForTeacher(
+            @Param("teacherUserId") Long teacherUserId,
+            @Param("studentProfileId") Long studentProfileId,
+            @Param("status") ScheduleStatus status
+    );
 }
