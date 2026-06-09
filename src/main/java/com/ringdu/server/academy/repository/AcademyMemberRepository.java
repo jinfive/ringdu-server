@@ -14,4 +14,5 @@ public interface AcademyMemberRepository extends JpaRepository<AcademyMember, Lo
     long countByAcademyId(Long academyId);
 
     List<AcademyMember> findAllByAcademyIdOrderByCreatedAtDesc(Long academyId);
+
 }

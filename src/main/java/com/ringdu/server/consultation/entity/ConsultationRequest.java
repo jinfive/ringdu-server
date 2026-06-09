@@ -135,4 +135,14 @@ public class ConsultationRequest extends BaseEntity {
         this.status = ConsultationRequestStatus.COMPLETED;
         this.academyMemo = memo;
     }
+
+    public void cancel() {
+        this.status = ConsultationRequestStatus.CANCELED;
+    }
+
+    public ConsultationConsultantType getConsultantType() {
+        return teacherUserId == null
+                ? ConsultationConsultantType.ACADEMY_ACCOUNT
+                : ConsultationConsultantType.TEACHER;
+    }
 }

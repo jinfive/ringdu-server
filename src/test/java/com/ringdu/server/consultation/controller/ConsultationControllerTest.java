@@ -15,6 +15,7 @@ import com.ringdu.server.auth.dto.AcademySignupRequest;
 import com.ringdu.server.auth.service.AuthService;
 import com.ringdu.server.consultation.dto.ConsultationAvailabilityRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestCreateRequest;
+import com.ringdu.server.consultation.entity.ConsultationRequest;
 import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
 import com.ringdu.server.consultation.entity.ConsultationTopic;
 import com.ringdu.server.consultation.entity.ConsultationType;
@@ -116,10 +117,87 @@ class ConsultationControllerTest {
         mockMvc.perform(post("/api/academies/me/consultation-availability")
                         .header("Authorization", "Bearer " + fixture.academyToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(availabilityRequest(DayOfWeek.MONDAY, 14, 15))))
+                        .content(objectMapper.writeValueAsString(availabilityRequest(fixture, DayOfWeek.MONDAY, 14, 15))))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teacherUserId").value(fixture.teacher().getId()))
+                .andExpect(jsonPath("$.data.teacherName").value(fixture.teacher().getName()))
                 .andExpect(jsonPath("$.data.dayOfWeek").value("MONDAY"))
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+    }
+
+    @Test
+    @DisplayName("ACADEMY는 자기 학원 소속이 아닌 선생님 상담 가능 시간을 생성할 수 없다")
+    void academyCannotCreateAvailabilityForUnconnectedTeacher() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-unconnected-availability@ringdu.com");
+        User otherTeacher = saveUser("consult-unconnected-availability-teacher@ringdu.com", Role.TEACHER);
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ConsultationAvailabilityRequest(
+                                null,
+                                otherTeacher.getId(),
+                                DayOfWeek.MONDAY,
+                                LocalTime.of(14, 0),
+                                LocalTime.of(15, 0),
+                                ConsultationType.ENROLLED_STUDENT
+                        ))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("TEACHER가 본인의 상담 가능 시간을 생성하고 조회할 수 있다")
+    void teacherCanCreateAndListOwnAvailability() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-availability@ringdu.com");
+
+        mockMvc.perform(post("/api/teacher/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.teacherToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ConsultationAvailabilityRequest(
+                                fixture.academy().getId(),
+                                null,
+                                DayOfWeek.MONDAY,
+                                LocalTime.of(14, 0),
+                                LocalTime.of(15, 0),
+                                ConsultationType.ENROLLED_STUDENT
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.academyId").value(fixture.academy().getId()))
+                .andExpect(jsonPath("$.data.teacherUserId").value(fixture.teacher().getId()));
+
+        mockMvc.perform(get("/api/teacher/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("TEACHER는 다른 선생님의 상담 가능 시간을 수정하거나 삭제할 수 없다")
+    void teacherCannotChangeOtherTeacherAvailability() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-teacher-other-availability@ringdu.com");
+        Long availabilityId = createAvailability(fixture, DayOfWeek.MONDAY, 14, 15);
+        User otherTeacher = createConnectedTeacher(
+                new AcademyContext(fixture.academyToken(), fixture.academy()),
+                "consult-teacher-other-user@ringdu.com"
+        );
+        ConsultationAvailabilityRequest request = new ConsultationAvailabilityRequest(
+                fixture.academy().getId(),
+                null,
+                DayOfWeek.TUESDAY,
+                LocalTime.of(14, 0),
+                LocalTime.of(15, 0),
+                ConsultationType.ENROLLED_STUDENT
+        );
+
+        mockMvc.perform(put("/api/teacher/consultation-availability/{availabilityId}", availabilityId)
+                        .header("Authorization", "Bearer " + accessToken(otherTeacher))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(delete("/api/teacher/consultation-availability/{availabilityId}", availabilityId)
+                        .header("Authorization", "Bearer " + accessToken(otherTeacher)))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -131,6 +209,8 @@ class ConsultationControllerTest {
                         .header("Authorization", "Bearer " + fixture.academyToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new ConsultationAvailabilityRequest(
+                                null,
+                                fixture.teacher().getId(),
                                 DayOfWeek.MONDAY,
                                 LocalTime.of(15, 0),
                                 LocalTime.of(14, 0),
@@ -148,7 +228,91 @@ class ConsultationControllerTest {
         mockMvc.perform(post("/api/academies/me/consultation-availability")
                         .header("Authorization", "Bearer " + fixture.academyToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(availabilityRequest(DayOfWeek.MONDAY, 15, 17))))
+                        .content(objectMapper.writeValueAsString(availabilityRequest(fixture, DayOfWeek.MONDAY, 15, 17))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("학원 상담과 선생님 상담은 같은 요일과 시간에 등록할 수 있다")
+    void academyAndTeacherAvailabilityCanOverlap() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-academy-teacher@ringdu.com");
+
+        createAcademyAvailability(fixture, DayOfWeek.MONDAY, "14:30", "15:30");
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "TEACHER",
+                                "teacherUserId", fixture.teacher().getId(),
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:30",
+                                "endTime", "15:00",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("서로 다른 선생님은 같은 요일과 시간에 상담 가능 시간을 등록할 수 있다")
+    void differentTeacherAvailabilityCanOverlap() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-different-teachers@ringdu.com");
+        User otherTeacher = createConnectedTeacher(
+                new AcademyContext(fixture.academyToken(), fixture.academy()),
+                "consult-overlap-other-teacher@ringdu.com"
+        );
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "TEACHER",
+                                "teacherUserId", otherTeacher.getId(),
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:00",
+                                "endTime", "15:00",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("같은 선생님의 겹치는 상담 가능 시간은 등록할 수 없다")
+    void sameTeacherAvailabilityCannotOverlap() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-same-teacher@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "TEACHER",
+                                "teacherUserId", fixture.teacher().getId(),
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:45",
+                                "endTime", "15:15",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("학원 상담끼리 겹치는 상담 가능 시간은 등록할 수 없다")
+    void academyAvailabilityCannotOverlapItself() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-academy@ringdu.com");
+        createAcademyAvailability(fixture, DayOfWeek.MONDAY, "14:30", "15:30");
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "ACADEMY_ACCOUNT",
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "15:00",
+                                "endTime", "15:30",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
                 .andExpect(status().isConflict());
     }
 
@@ -178,7 +342,7 @@ class ConsultationControllerTest {
         mockMvc.perform(put("/api/academies/me/consultation-availability/{availabilityId}", availabilityId)
                         .header("Authorization", "Bearer " + fixture.academyToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(availabilityRequest(DayOfWeek.TUESDAY, 16, 17))))
+                        .content(objectMapper.writeValueAsString(availabilityRequest(fixture, DayOfWeek.TUESDAY, 16, 17))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.dayOfWeek").value("TUESDAY"))
                 .andExpect(jsonPath("$.data.startTime").value("16:00:00"));
@@ -212,7 +376,8 @@ class ConsultationControllerTest {
                                 "dayOfWeek", "MONDAY",
                                 "startTime", "14:00",
                                 "endTime", "16:00",
-                                "consultationType", "ALL"
+                                "consultationType", "ALL",
+                                "teacherUserId", fixture.teacher().getId()
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.startTime").value("14:00:00"));
@@ -222,13 +387,19 @@ class ConsultationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()))
+                .andExpect(jsonPath("$.data[0].consultants.length()").value(2))
+                .andExpect(jsonPath("$.data[0].consultants[0].consultantType").value("ACADEMY_ACCOUNT"))
+                .andExpect(jsonPath("$.data[0].consultants[1].consultantType").value("TEACHER"))
                 .andExpect(jsonPath("$.data[0].teachers.length()").value(1));
 
-        mockMvc.perform(get("/api/academies/{academyId}/consultation-availability", fixture.academy().getId())
-                        .queryParam("type", "ENROLLED_STUDENT")
+        mockMvc.perform(get("/api/parent/consultation-availability")
+                        .queryParam("academyId", String.valueOf(fixture.academy().getId()))
+                        .queryParam("teacherUserId", String.valueOf(fixture.teacher().getId()))
+                        .queryParam("year", String.valueOf(monday().getYear()))
+                .queryParam("month", String.valueOf(monday().getMonthValue()))
                         .header("Authorization", "Bearer " + fixture.parentToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1));
+                .andExpect(jsonPath("$.data[?(@.date == '" + monday() + "')]").isNotEmpty());
 
         mockMvc.perform(post("/api/parent/consultation-requests")
                         .header("Authorization", "Bearer " + fixture.parentToken())
@@ -277,6 +448,86 @@ class ConsultationControllerTest {
     }
 
     @Test
+    @DisplayName("학부모가 학원 대표 상담을 요청하면 학원만 처리하고 완료 후 활성 목록에서 제외한다")
+    void academyAccountConsultationFlow() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-account-flow@ringdu.com");
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "ACADEMY_ACCOUNT",
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:00",
+                                "endTime", "16:00",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultantType").value("ACADEMY_ACCOUNT"))
+                .andExpect(jsonPath("$.data.consultantName").value("학원 상담"))
+                .andExpect(jsonPath("$.data.teacherUserId").doesNotExist());
+
+        mockMvc.perform(get("/api/parent/consultation-availability")
+                        .queryParam("academyId", String.valueOf(fixture.academy().getId()))
+                        .queryParam("consultantType", "ACADEMY_ACCOUNT")
+                        .queryParam("year", String.valueOf(monday().getYear()))
+                        .queryParam("month", String.valueOf(monday().getMonthValue()))
+                        .header("Authorization", "Bearer " + fixture.parentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.date == '" + monday() + "')]").isNotEmpty());
+
+        Map<String, Object> requestPayload = new HashMap<>();
+        requestPayload.put("academyId", fixture.academy().getId());
+        requestPayload.put("studentProfileId", fixture.studentProfileId());
+        requestPayload.put("consultantType", "ACADEMY_ACCOUNT");
+        requestPayload.put("teacherUserId", null);
+        requestPayload.put("requestedDate", monday().toString());
+        requestPayload.put("requestedStartTime", "14:00");
+        requestPayload.put("requestedEndTime", "15:00");
+        requestPayload.put("topic", "STUDY");
+        requestPayload.put("content", "학원 대표 상담 요청입니다.");
+
+        mockMvc.perform(post("/api/parent/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.parentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(requestPayload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultantType").value("ACADEMY_ACCOUNT"))
+                .andExpect(jsonPath("$.data.consultantName").value("학원 상담"));
+
+        Long requestId = consultationRequestRepository.findAllByParentUserIdOrderByCreatedAtDescIdDesc(fixture.parent().getId())
+                .get(0)
+                .getId();
+
+        mockMvc.perform(get("/api/teacher/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("activeOnly", "true")
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+    }
+
+    @Test
     @DisplayName("PARENT는 연결되지 않은 자녀 상담 요청을 생성할 수 없다")
     void parentCannotCreateConsultationRequestForUnconnectedChild() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-unconnected@ringdu.com");
@@ -315,6 +566,71 @@ class ConsultationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(requestCreate(fixture, monday(), 14, 15))))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("학원 상담 예약과 선생님 상담 예약은 같은 날짜와 시간에 생성할 수 있다")
+    void academyAndTeacherRequestsCanOccupySameTime() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-request-overlap-assignee@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        createAcademyAvailability(fixture, DayOfWeek.MONDAY, "14:00", "16:00");
+        createRequest(fixture, monday(), 14, 15);
+
+        Map<String, Object> academyRequest = new HashMap<>();
+        academyRequest.put("academyId", fixture.academy().getId());
+        academyRequest.put("studentProfileId", fixture.studentProfileId());
+        academyRequest.put("consultantType", "ACADEMY_ACCOUNT");
+        academyRequest.put("teacherUserId", null);
+        academyRequest.put("requestedDate", monday().toString());
+        academyRequest.put("requestedStartTime", "14:00");
+        academyRequest.put("requestedEndTime", "15:00");
+        academyRequest.put("topic", "STUDY");
+        academyRequest.put("content", "학원 상담 예약입니다.");
+
+        mockMvc.perform(post("/api/parent/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.parentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(academyRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultantType").value("ACADEMY_ACCOUNT"));
+    }
+
+    @Test
+    @DisplayName("REQUESTED와 APPROVED 상담은 슬롯을 점유하고 REJECTED, COMPLETED, CANCELED 상담은 점유하지 않는다")
+    void occupiedSlotReflectsConsultationStatus() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-occupied-slots@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 15);
+        Long requestId = createRequest(fixture, monday(), 14, 15);
+
+        assertParentSlotAvailability(fixture, false);
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "승인"))))
+                .andExpect(status().isOk());
+        assertParentSlotAvailability(fixture, false);
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "완료"))))
+                .andExpect(status().isOk());
+        assertParentSlotAvailability(fixture, true);
+
+        Long rejectedRequestId = createRequest(fixture, monday(), 14, 15);
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/reject", rejectedRequestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("memo", "거절"))))
+                .andExpect(status().isOk());
+        assertParentSlotAvailability(fixture, true);
+
+        Long canceledRequestId = createRequest(fixture, monday(), 14, 15);
+        ConsultationRequest canceledRequest = consultationRequestRepository.findById(canceledRequestId).orElseThrow();
+        canceledRequest.cancel();
+        consultationRequestRepository.saveAndFlush(canceledRequest);
+        assertParentSlotAvailability(fixture, true);
     }
 
     @Test
@@ -603,11 +919,33 @@ class ConsultationControllerTest {
     }
 
     @Test
-    @DisplayName("TEACHER 상담 요청 조회는 요청 담당 선생님이 아니라 담당 학생 기준으로 동작한다")
-    void teacherCanListAssignedStudentRequestEvenWhenRequestTeacherIsDifferent() throws Exception {
+    @DisplayName("TEACHER 상담 요청 조회는 본인에게 배정된 요청만 반환한다")
+    void teacherCannotListRequestAssignedToDifferentTeacher() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-teacher-request-student-scope@ringdu.com");
         User otherTeacher = createConnectedTeacher(new AcademyContext(fixture.academyToken(), fixture.academy()), "other-request-teacher@ringdu.com");
-        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        AcademyClass otherClass = classRepository.save(AcademyClass.create(
+                fixture.academy().getId(),
+                2L,
+                otherTeacher.getId(),
+                "중등 수학 B반",
+                AcademyClassDayOfWeek.MONDAY,
+                LocalTime.of(18, 0),
+                LocalTime.of(19, 0),
+                "테스트 메모"
+        ));
+        classStudentRepository.save(AcademyClassStudent.create(otherClass.getId(), fixture.studentProfileId()));
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ConsultationAvailabilityRequest(
+                                null,
+                                otherTeacher.getId(),
+                                DayOfWeek.MONDAY,
+                                LocalTime.of(14, 0),
+                                LocalTime.of(16, 0),
+                                ConsultationType.ENROLLED_STUDENT
+                        ))))
+                .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/parent/consultation-requests")
                         .header("Authorization", "Bearer " + fixture.parentToken())
@@ -628,13 +966,11 @@ class ConsultationControllerTest {
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
                         .header("Authorization", "Bearer " + fixture.teacherToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].teacherUserId").value(otherTeacher.getId()))
-                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()));
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
-    @DisplayName("TEACHER가 APPROVED 상담 요청을 완료 처리하면 ACADEMY와 TEACHER 조회 모두 COMPLETED로 보인다")
+    @DisplayName("TEACHER가 APPROVED 상담 요청을 완료 처리하면 활성 목록에서 사라지고 ACADEMY 이력에는 남는다")
     void teacherCanCompleteApprovedRequestAndStatusIsShared() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-teacher-complete@ringdu.com");
         createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
@@ -662,11 +998,9 @@ class ConsultationControllerTest {
 
         mockMvc.perform(get("/api/teacher/consultation-memos/requests")
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
-                        .queryParam("status", "COMPLETED")
                         .header("Authorization", "Bearer " + fixture.teacherToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
@@ -694,7 +1028,8 @@ class ConsultationControllerTest {
         mockMvc.perform(get("/api/teacher/consultation-memos/requests")
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
                         .header("Authorization", "Bearer " + accessToken(otherTeacher)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
 
         mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
                         .header("Authorization", "Bearer " + fixture.academyToken())
@@ -710,8 +1045,8 @@ class ConsultationControllerTest {
     }
 
     @Test
-    @DisplayName("학원이 완료 처리하면 TEACHER 상담 요청 조회에서도 COMPLETED로 보인다")
-    void academyCompleteStatusIsVisibleToTeacher() throws Exception {
+    @DisplayName("학원이 완료 처리하면 TEACHER 활성 상담 요청 목록에서 사라진다")
+    void academyCompletedRequestIsHiddenFromTeacherActiveList() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-academy-complete-visible@ringdu.com");
         createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
         Long requestId = createRequest(fixture, monday(), 14, 15);
@@ -729,11 +1064,9 @@ class ConsultationControllerTest {
 
         mockMvc.perform(get("/api/teacher/consultation-memos/requests")
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
-                        .queryParam("status", "COMPLETED")
                         .header("Authorization", "Bearer " + fixture.teacherToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].consultationRequestId").value(requestId));
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
@@ -785,6 +1118,13 @@ class ConsultationControllerTest {
         User secondStudentUser = saveUser("second-student-mismatch@ringdu.com", Role.STUDENT);
         StudentProfile secondStudent = createStudent(new AcademyContext(fixture.academyToken(), fixture.academy()), secondStudentUser.getId());
         parentStudentRelationRepository.save(ParentStudentRelation.create(secondParent, secondStudentUser));
+        Long assignedClassId = classRepository.findAllByTeacherUserIdAndStatusOrderByIdAsc(
+                        fixture.teacher().getId(),
+                        com.ringdu.server.academy.schedule.entity.ScheduleStatus.ACTIVE
+                )
+                .get(0)
+                .getId();
+        classStudentRepository.save(AcademyClassStudent.create(assignedClassId, secondStudent.getId()));
         createAvailability(fixture, DayOfWeek.MONDAY, 14, 17);
 
         mockMvc.perform(post("/api/parent/consultation-requests")
@@ -818,9 +1158,41 @@ class ConsultationControllerTest {
         mockMvc.perform(post("/api/academies/me/consultation-availability")
                         .header("Authorization", "Bearer " + fixture.academyToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(availabilityRequest(dayOfWeek, startHour, endHour))))
+                        .content(objectMapper.writeValueAsString(availabilityRequest(fixture, dayOfWeek, startHour, endHour))))
                 .andExpect(status().isOk());
         return fixtureLastAvailabilityId(fixture.academy().getId());
+    }
+
+    private void createAcademyAvailability(
+            ConsultationFixture fixture,
+            DayOfWeek dayOfWeek,
+            String startTime,
+            String endTime
+    ) throws Exception {
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "ACADEMY_ACCOUNT",
+                                "dayOfWeek", dayOfWeek.name(),
+                                "startTime", startTime,
+                                "endTime", endTime,
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    private void assertParentSlotAvailability(ConsultationFixture fixture, boolean available) throws Exception {
+        mockMvc.perform(get("/api/parent/consultation-availability")
+                        .queryParam("academyId", String.valueOf(fixture.academy().getId()))
+                        .queryParam("teacherUserId", String.valueOf(fixture.teacher().getId()))
+                        .queryParam("year", String.valueOf(monday().getYear()))
+                        .queryParam("month", String.valueOf(monday().getMonthValue()))
+                        .header("Authorization", "Bearer " + fixture.parentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data[?(@.date == '" + monday() + "')].slots[0].available"
+                ).value(available));
     }
 
     private Long createRequest(ConsultationFixture fixture, LocalDate date, int startHour, int endHour) throws Exception {
@@ -837,15 +1209,22 @@ class ConsultationControllerTest {
     }
 
     private Long fixtureLastAvailabilityId(Long academyId) {
-        return consultationAvailabilityRepository.findAllByAcademyIdOrderByDayOfWeekAscStartTimeAscIdAsc(academyId)
+        return consultationAvailabilityRepository.findAllByAcademyIdOrderByTeacherUserIdAscDayOfWeekAscStartTimeAscIdAsc(academyId)
                 .stream()
                 .reduce((first, second) -> second)
                 .orElseThrow()
                 .getId();
     }
 
-    private ConsultationAvailabilityRequest availabilityRequest(DayOfWeek dayOfWeek, int startHour, int endHour) {
+    private ConsultationAvailabilityRequest availabilityRequest(
+            ConsultationFixture fixture,
+            DayOfWeek dayOfWeek,
+            int startHour,
+            int endHour
+    ) {
         return new ConsultationAvailabilityRequest(
+                null,
+                fixture.teacher().getId(),
                 dayOfWeek,
                 LocalTime.of(startHour, 0),
                 LocalTime.of(endHour, 0),

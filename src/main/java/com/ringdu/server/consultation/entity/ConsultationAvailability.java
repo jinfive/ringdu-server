@@ -21,7 +21,10 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "consultation_availabilities",
         indexes = {
-                @Index(name = "idx_consultation_availabilities_academy_day", columnList = "academy_id, day_of_week"),
+                @Index(
+                        name = "idx_consultation_availabilities_teacher_day",
+                        columnList = "academy_id, teacher_user_id, day_of_week"
+                ),
                 @Index(name = "idx_consultation_availabilities_status", columnList = "status")
         }
 )
@@ -34,6 +37,9 @@ public class ConsultationAvailability extends BaseEntity {
 
     @Column(name = "academy_id", nullable = false)
     private Long academyId;
+
+    @Column(name = "teacher_user_id")
+    private Long teacherUserId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "day_of_week", nullable = false, length = 20)
@@ -55,12 +61,14 @@ public class ConsultationAvailability extends BaseEntity {
 
     private ConsultationAvailability(
             Long academyId,
+            Long teacherUserId,
             DayOfWeek dayOfWeek,
             LocalTime startTime,
             LocalTime endTime,
             ConsultationType consultationType
     ) {
         this.academyId = academyId;
+        this.teacherUserId = teacherUserId;
         this.dayOfWeek = dayOfWeek;
         this.startTime = startTime;
         this.endTime = endTime;
@@ -70,12 +78,13 @@ public class ConsultationAvailability extends BaseEntity {
 
     public static ConsultationAvailability create(
             Long academyId,
+            Long teacherUserId,
             DayOfWeek dayOfWeek,
             LocalTime startTime,
             LocalTime endTime,
             ConsultationType consultationType
     ) {
-        return new ConsultationAvailability(academyId, dayOfWeek, startTime, endTime, consultationType);
+        return new ConsultationAvailability(academyId, teacherUserId, dayOfWeek, startTime, endTime, consultationType);
     }
 
     public void update(DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime, ConsultationType consultationType) {
@@ -88,5 +97,11 @@ public class ConsultationAvailability extends BaseEntity {
 
     public void deactivate() {
         this.status = ConsultationAvailabilityStatus.INACTIVE;
+    }
+
+    public ConsultationConsultantType getConsultantType() {
+        return teacherUserId == null
+                ? ConsultationConsultantType.ACADEMY_ACCOUNT
+                : ConsultationConsultantType.TEACHER;
     }
 }

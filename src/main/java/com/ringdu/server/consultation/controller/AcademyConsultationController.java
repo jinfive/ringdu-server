@@ -9,7 +9,6 @@ import com.ringdu.server.consultation.dto.ConsultationRequestActionRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestResponse;
 import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
 import com.ringdu.server.consultation.entity.ConsultationRequestType;
-import com.ringdu.server.consultation.entity.ConsultationType;
 import com.ringdu.server.consultation.service.ConsultationService;
 import com.ringdu.server.global.common.ApiResponse;
 import com.ringdu.server.global.security.CustomUserPrincipal;
@@ -40,9 +39,10 @@ public class AcademyConsultationController {
     @GetMapping("/me/consultation-availability")
     @PreAuthorize("hasRole('ACADEMY')")
     public ApiResponse<List<ConsultationAvailabilityResponse>> getMyAvailability(
-            @AuthenticationPrincipal CustomUserPrincipal principal
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @RequestParam(required = false) Long teacherUserId
     ) {
-        return ApiResponse.success(consultationService.getAcademyAvailability(principal.userId()));
+        return ApiResponse.success(consultationService.getAcademyAvailability(principal.userId(), teacherUserId));
     }
 
     @PostMapping("/me/consultation-availability")
@@ -73,15 +73,6 @@ public class AcademyConsultationController {
         return ApiResponse.success(consultationService.deleteAcademyAvailability(principal.userId(), availabilityId));
     }
 
-    @GetMapping("/{academyId}/consultation-availability")
-    @PreAuthorize("hasAnyRole('PARENT', 'ACADEMY')")
-    public ApiResponse<List<ConsultationAvailabilityResponse>> getAcademyAvailability(
-            @PathVariable Long academyId,
-            @RequestParam(required = false) ConsultationType type
-    ) {
-        return ApiResponse.success(consultationService.getPublicAvailability(academyId, type));
-    }
-
     @GetMapping("/me/consultation-requests")
     @PreAuthorize("hasRole('ACADEMY')")
     public ApiResponse<List<ConsultationRequestResponse>> getMyConsultationRequests(
@@ -90,7 +81,8 @@ public class AcademyConsultationController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) ConsultationRequestType type,
-            @RequestParam(required = false) Long studentProfileId
+            @RequestParam(required = false) Long studentProfileId,
+            @RequestParam(defaultValue = "false") boolean activeOnly
     ) {
         return ApiResponse.success(consultationService.getAcademyRequests(
                 principal.userId(),
@@ -98,7 +90,8 @@ public class AcademyConsultationController {
                 from,
                 to,
                 type,
-                studentProfileId
+                studentProfileId,
+                activeOnly
         ));
     }
 
