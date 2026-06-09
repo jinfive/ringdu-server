@@ -415,5 +415,83 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ---
 
+## student_billing_settings
+
+### 설명
+
+학생별 월 수강료와 수납 기준일을 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 수납 설정 ID |
+| academy_id | bigint | No | 학원 ID |
+| student_profile_id | bigint | No | 학생 프로필 ID |
+| monthly_tuition | bigint | No | 월 수강료(원) |
+| due_day | integer | No | 매월 수납 기준일(1~28) |
+| memo | text | Yes | 수납 설정 메모 |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+### 제약조건
+
+- `academy_id + student_profile_id`는 유일하다.
+- `monthly_tuition >= 0`, `due_day`는 1~28 범위다.
+
+---
+
+## student_billing_invoices
+
+### 설명
+
+학생별 월 청구 금액과 누적 수납 상태를 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 청구서 ID |
+| academy_id | bigint | No | 학원 ID |
+| student_profile_id | bigint | No | 학생 프로필 ID |
+| billing_month | varchar(7) | No | 청구월(`YYYY-MM`) |
+| issued_date | date | No | 청구 생성일 |
+| due_date | date | No | 납부 기준일 |
+| amount | bigint | No | 청구 금액 |
+| paid_amount | bigint | No | 누적 수납 금액 |
+| status | varchar(20) | No | `UNPAID`, `PARTIAL`, `PAID`, `CANCELED` |
+| memo | text | Yes | 청구 메모 |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+### 제약조건
+
+- `academy_id + student_profile_id + billing_month`는 유일하다.
+- 청구 금액은 누적 수납 금액보다 작게 변경할 수 없다.
+
+---
+
+## student_billing_payments
+
+### 설명
+
+청구서에 반영된 개별 수납 이력을 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 수납 이력 ID |
+| billing_invoice_id | bigint | No | 청구서 ID |
+| academy_id | bigint | No | 학원 ID |
+| student_profile_id | bigint | No | 학생 프로필 ID |
+| amount | bigint | No | 수납 금액 |
+| payment_date | date | No | 수납일 |
+| memo | text | Yes | 수납 메모 |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+---
+
 ## users
 ... (기존 내용 유지)
