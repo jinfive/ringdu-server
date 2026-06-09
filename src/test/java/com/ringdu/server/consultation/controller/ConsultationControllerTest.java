@@ -15,6 +15,7 @@ import com.ringdu.server.auth.dto.AcademySignupRequest;
 import com.ringdu.server.auth.service.AuthService;
 import com.ringdu.server.consultation.dto.ConsultationAvailabilityRequest;
 import com.ringdu.server.consultation.dto.ConsultationRequestCreateRequest;
+import com.ringdu.server.consultation.entity.ConsultationRequest;
 import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
 import com.ringdu.server.consultation.entity.ConsultationTopic;
 import com.ringdu.server.consultation.entity.ConsultationType;
@@ -228,6 +229,90 @@ class ConsultationControllerTest {
                         .header("Authorization", "Bearer " + fixture.academyToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(availabilityRequest(fixture, DayOfWeek.MONDAY, 15, 17))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("학원 상담과 선생님 상담은 같은 요일과 시간에 등록할 수 있다")
+    void academyAndTeacherAvailabilityCanOverlap() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-academy-teacher@ringdu.com");
+
+        createAcademyAvailability(fixture, DayOfWeek.MONDAY, "14:30", "15:30");
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "TEACHER",
+                                "teacherUserId", fixture.teacher().getId(),
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:30",
+                                "endTime", "15:00",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("서로 다른 선생님은 같은 요일과 시간에 상담 가능 시간을 등록할 수 있다")
+    void differentTeacherAvailabilityCanOverlap() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-different-teachers@ringdu.com");
+        User otherTeacher = createConnectedTeacher(
+                new AcademyContext(fixture.academyToken(), fixture.academy()),
+                "consult-overlap-other-teacher@ringdu.com"
+        );
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "TEACHER",
+                                "teacherUserId", otherTeacher.getId(),
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:00",
+                                "endTime", "15:00",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("같은 선생님의 겹치는 상담 가능 시간은 등록할 수 없다")
+    void sameTeacherAvailabilityCannotOverlap() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-same-teacher@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 15);
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "TEACHER",
+                                "teacherUserId", fixture.teacher().getId(),
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:45",
+                                "endTime", "15:15",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("학원 상담끼리 겹치는 상담 가능 시간은 등록할 수 없다")
+    void academyAvailabilityCannotOverlapItself() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-overlap-academy@ringdu.com");
+        createAcademyAvailability(fixture, DayOfWeek.MONDAY, "14:30", "15:30");
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "ACADEMY_ACCOUNT",
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "15:00",
+                                "endTime", "15:30",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
                 .andExpect(status().isConflict());
     }
 
@@ -484,7 +569,34 @@ class ConsultationControllerTest {
     }
 
     @Test
-    @DisplayName("REQUESTED와 APPROVED 상담은 슬롯을 점유하고 REJECTED와 COMPLETED 상담은 점유하지 않는다")
+    @DisplayName("학원 상담 예약과 선생님 상담 예약은 같은 날짜와 시간에 생성할 수 있다")
+    void academyAndTeacherRequestsCanOccupySameTime() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-request-overlap-assignee@ringdu.com");
+        createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
+        createAcademyAvailability(fixture, DayOfWeek.MONDAY, "14:00", "16:00");
+        createRequest(fixture, monday(), 14, 15);
+
+        Map<String, Object> academyRequest = new HashMap<>();
+        academyRequest.put("academyId", fixture.academy().getId());
+        academyRequest.put("studentProfileId", fixture.studentProfileId());
+        academyRequest.put("consultantType", "ACADEMY_ACCOUNT");
+        academyRequest.put("teacherUserId", null);
+        academyRequest.put("requestedDate", monday().toString());
+        academyRequest.put("requestedStartTime", "14:00");
+        academyRequest.put("requestedEndTime", "15:00");
+        academyRequest.put("topic", "STUDY");
+        academyRequest.put("content", "학원 상담 예약입니다.");
+
+        mockMvc.perform(post("/api/parent/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.parentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(academyRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultantType").value("ACADEMY_ACCOUNT"));
+    }
+
+    @Test
+    @DisplayName("REQUESTED와 APPROVED 상담은 슬롯을 점유하고 REJECTED, COMPLETED, CANCELED 상담은 점유하지 않는다")
     void occupiedSlotReflectsConsultationStatus() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-occupied-slots@ringdu.com");
         createAvailability(fixture, DayOfWeek.MONDAY, 14, 15);
@@ -512,6 +624,12 @@ class ConsultationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("memo", "거절"))))
                 .andExpect(status().isOk());
+        assertParentSlotAvailability(fixture, true);
+
+        Long canceledRequestId = createRequest(fixture, monday(), 14, 15);
+        ConsultationRequest canceledRequest = consultationRequestRepository.findById(canceledRequestId).orElseThrow();
+        canceledRequest.cancel();
+        consultationRequestRepository.saveAndFlush(canceledRequest);
         assertParentSlotAvailability(fixture, true);
     }
 
@@ -1043,6 +1161,25 @@ class ConsultationControllerTest {
                         .content(objectMapper.writeValueAsString(availabilityRequest(fixture, dayOfWeek, startHour, endHour))))
                 .andExpect(status().isOk());
         return fixtureLastAvailabilityId(fixture.academy().getId());
+    }
+
+    private void createAcademyAvailability(
+            ConsultationFixture fixture,
+            DayOfWeek dayOfWeek,
+            String startTime,
+            String endTime
+    ) throws Exception {
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "ACADEMY_ACCOUNT",
+                                "dayOfWeek", dayOfWeek.name(),
+                                "startTime", startTime,
+                                "endTime", endTime,
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     private void assertParentSlotAvailability(ConsultationFixture fixture, boolean available) throws Exception {

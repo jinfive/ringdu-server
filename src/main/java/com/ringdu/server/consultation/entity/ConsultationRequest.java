@@ -136,6 +136,10 @@ public class ConsultationRequest extends BaseEntity {
         this.academyMemo = memo;
     }
 
+    public void cancel() {
+        this.status = ConsultationRequestStatus.CANCELED;
+    }
+
     public ConsultationConsultantType getConsultantType() {
         return teacherUserId == null
                 ? ConsultationConsultantType.ACADEMY_ACCOUNT
