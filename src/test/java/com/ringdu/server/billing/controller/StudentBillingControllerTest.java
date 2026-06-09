@@ -94,6 +94,42 @@ class StudentBillingControllerTest {
     }
 
     @Test
+    @DisplayName("수납 기준일은 31일까지 저장할 수 있다")
+    void dueDayCanBeThirtyOne() throws Exception {
+        BillingFixture fixture = fixture("billing-due-day-31@ringdu.com");
+
+        saveSetting(fixture, 300_000L, 31)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dueDay").value(31));
+    }
+
+    @Test
+    @DisplayName("2월의 수납 기준일 31일은 2월 마지막 날로 계산한다")
+    void februaryDueDayFallsBackToLastDay() throws Exception {
+        setClock("2026-02-28T01:00:00Z");
+        BillingFixture fixture = fixture("billing-february-last-day@ringdu.com");
+        saveSetting(fixture, 300_000L, 31).andExpect(status().isOk());
+
+        ensureCurrent(fixture)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generated").value(true))
+                .andExpect(jsonPath("$.data.invoice.dueDate").value("2026-02-28"));
+    }
+
+    @Test
+    @DisplayName("4월의 수납 기준일 31일은 4월 30일로 계산한다")
+    void aprilDueDayFallsBackToLastDay() throws Exception {
+        setClock("2026-04-30T01:00:00Z");
+        BillingFixture fixture = fixture("billing-april-last-day@ringdu.com");
+        saveSetting(fixture, 300_000L, 31).andExpect(status().isOk());
+
+        ensureCurrent(fixture)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generated").value(true))
+                .andExpect(jsonPath("$.data.invoice.dueDate").value("2026-04-30"));
+    }
+
+    @Test
     @DisplayName("다른 학원 학생 수납 설정에는 접근할 수 없다")
     void academyCannotAccessOtherAcademyStudent() throws Exception {
         BillingFixture owner = fixture("billing-owner@ringdu.com");
@@ -311,6 +347,11 @@ class StudentBillingControllerTest {
         saveSetting(fixture, amount, 1).andExpect(status().isOk());
         ensureCurrent(fixture).andExpect(status().isOk());
         return fixture;
+    }
+
+    private void setClock(String instant) {
+        when(clock.instant()).thenReturn(Instant.parse(instant));
+        when(clock.getZone()).thenReturn(SEOUL);
     }
 
     private Long currentInvoiceId(BillingFixture fixture) throws Exception {

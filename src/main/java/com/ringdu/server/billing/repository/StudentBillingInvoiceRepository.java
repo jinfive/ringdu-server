@@ -32,4 +32,8 @@ public interface StudentBillingInvoiceRepository extends JpaRepository<StudentBi
             Long studentProfileId,
             String billingMonth
     );
+
+    List<StudentBillingInvoice> findAllByStudentProfileIdInOrderByBillingMonthDescIdDesc(
+            List<Long> studentProfileIds
+    );
 }

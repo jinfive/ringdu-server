@@ -136,7 +136,8 @@ public class StudentBillingService {
             );
         }
 
-        if (today.getDayOfMonth() < setting.getDueDay()) {
+        LocalDate dueDate = resolveDueDate(currentMonth, setting.getDueDay());
+        if (today.isBefore(dueDate)) {
             return new StudentBillingEnsureCurrentResponse(false, "아직 수납 기준일 전입니다.", null);
         }
 
@@ -148,7 +149,7 @@ public class StudentBillingService {
                 billingMonth,
                 billingMonth,
                 today,
-                currentMonth.atDay(setting.getDueDay()),
+                dueDate,
                 setting.getMonthlyTuition(),
                 setting.getMemo()
         ));
@@ -234,8 +235,12 @@ public class StudentBillingService {
             return false;
         }
         return settingRepository.findByAcademyIdAndStudentProfileId(owner.academyId(), owner.studentProfileId())
-                .map(setting -> today.getDayOfMonth() >= setting.getDueDay())
+                .map(setting -> !today.isBefore(resolveDueDate(billingMonth, setting.getDueDay())))
                 .orElse(false);
+    }
+
+    private LocalDate resolveDueDate(YearMonth billingMonth, int dueDay) {
+        return billingMonth.atDay(Math.min(dueDay, billingMonth.lengthOfMonth()));
     }
 
     private StudentBillingInvoice getOwnedInvoice(BillingOwner owner, Long billingId) {

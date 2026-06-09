@@ -429,7 +429,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | academy_id | bigint | No | 학원 ID |
 | student_profile_id | bigint | No | 학생 프로필 ID |
 | monthly_tuition | bigint | No | 월 수강료(원) |
-| due_day | integer | No | 매월 수납 기준일(1~28) |
+| due_day | integer | No | 매월 수납 기준일(1~31), 없는 날짜는 월말로 처리 |
 | memo | text | Yes | 수납 설정 메모 |
 | created_at | timestamp | No | 생성 일시 |
 | updated_at | timestamp | No | 수정 일시 |
@@ -437,7 +437,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 ### 제약조건
 
 - `academy_id + student_profile_id`는 유일하다.
-- `monthly_tuition >= 0`, `due_day`는 1~28 범위다.
+- `monthly_tuition >= 0`, `due_day`는 1~31 범위다.
 
 ---
 

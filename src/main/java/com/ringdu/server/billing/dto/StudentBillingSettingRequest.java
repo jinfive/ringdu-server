@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 
 public record StudentBillingSettingRequest(
         @NotNull @PositiveOrZero Long monthlyTuition,
-        @NotNull @Min(1) @Max(28) Integer dueDay,
+        @NotNull @Min(1) @Max(31) Integer dueDay,
         @Size(max = 1000) String memo
 ) {
 }

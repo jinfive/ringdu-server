@@ -28,7 +28,7 @@ import org.hibernate.annotations.Check;
         )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Check(constraints = "monthly_tuition >= 0 AND due_day BETWEEN 1 AND 28")
+@Check(constraints = "monthly_tuition >= 0 AND due_day BETWEEN 1 AND 31")
 public class StudentBillingSetting extends BaseEntity {
 
     @Id
