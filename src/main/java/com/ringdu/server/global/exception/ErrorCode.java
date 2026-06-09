@@ -60,6 +60,7 @@ public enum ErrorCode {
     BILLING_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 수납 설정을 찾을 수 없습니다."),
     BILLING_INVOICE_NOT_FOUND(HttpStatus.NOT_FOUND, "청구서를 찾을 수 없습니다."),
     BILLING_INVOICE_AMOUNT_INVALID(HttpStatus.BAD_REQUEST, "청구 금액은 이미 수납한 금액보다 작을 수 없습니다."),
+    BILLING_PERIOD_INVALID(HttpStatus.BAD_REQUEST, "청구 시작월은 종료월보다 늦을 수 없습니다."),
     BILLING_PAYMENT_AMOUNT_INVALID(HttpStatus.BAD_REQUEST, "수납 금액을 확인해 주세요."),
     BILLING_INVOICE_STATUS_INVALID(HttpStatus.CONFLICT, "현재 상태에서는 청구서를 처리할 수 없습니다."),
     INVALID_PASSWORD(HttpStatus.UNAUTHORIZED, "비밀번호가 일치하지 않습니다."),

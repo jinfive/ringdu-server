@@ -158,6 +158,81 @@ class StudentBillingControllerTest {
     }
 
     @Test
+    @DisplayName("학원은 여러 달 선납 청구를 하나의 청구서로 생성할 수 있다")
+    void academyCanCreatePrepaidInvoice() throws Exception {
+        BillingFixture fixture = fixture("billing-prepaid@ringdu.com");
+
+        createManualInvoice(fixture, "PREPAID", "2026-08", "2026-10", 900_000L)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.billingType").value("PREPAID"))
+                .andExpect(jsonPath("$.data.billingTypeLabel").value("3개월 선납"))
+                .andExpect(jsonPath("$.data.billingMonth").value("2026-08"))
+                .andExpect(jsonPath("$.data.billingPeriodStartMonth").value("2026-08"))
+                .andExpect(jsonPath("$.data.billingPeriodEndMonth").value("2026-10"))
+                .andExpect(jsonPath("$.data.amount").value(900000))
+                .andExpect(jsonPath("$.data.unpaidAmount").value(900000));
+    }
+
+    @Test
+    @DisplayName("임의 청구는 같은 기간에 여러 건 생성할 수 있다")
+    void manualInvoicesCanShareBillingPeriod() throws Exception {
+        BillingFixture fixture = fixture("billing-manual-duplicate@ringdu.com");
+
+        createManualInvoice(fixture, "TEXTBOOK", "2026-08", "2026-08", 30_000L)
+                .andExpect(status().isOk());
+        createManualInvoice(fixture, "TEXTBOOK", "2026-08", "2026-08", 40_000L)
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(billingPath(fixture.student().getId()) + "/invoices")
+                        .param("year", "2026")
+                        .header("Authorization", bearer(fixture.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("청구 시작월은 종료월보다 늦을 수 없다")
+    void manualInvoicePeriodMustBeOrdered() throws Exception {
+        BillingFixture fixture = fixture("billing-period-invalid@ringdu.com");
+
+        createManualInvoice(fixture, "PREPAID", "2026-10", "2026-08", 900_000L)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("임의 청구가 있어도 이번 달 정규 청구는 한 번만 자동 생성한다")
+    void manualInvoiceDoesNotBlockRegularInvoice() throws Exception {
+        BillingFixture fixture = fixture("billing-manual-regular@ringdu.com");
+        saveSetting(fixture, 300_000L, 1).andExpect(status().isOk());
+        createManualInvoice(fixture, "TEXTBOOK", "2026-08", "2026-08", 30_000L)
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(billingPath(fixture.student().getId()) + "/summary")
+                        .param("year", "2026")
+                        .param("month", "8")
+                        .header("Authorization", bearer(fixture.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.amount").value(30000))
+                .andExpect(jsonPath("$.data.hasInvoice").value(false));
+
+        ensureCurrent(fixture)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generated").value(true))
+                .andExpect(jsonPath("$.data.invoice.billingType").value("REGULAR"));
+
+        mockMvc.perform(get(billingPath(fixture.student().getId()) + "/summary")
+                        .param("year", "2026")
+                        .param("month", "8")
+                        .header("Authorization", bearer(fixture.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.amount").value(330000))
+                .andExpect(jsonPath("$.data.hasInvoice").value(true));
+        ensureCurrent(fixture)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generated").value(false));
+    }
+
+    @Test
     @DisplayName("청구 금액과 메모를 수정할 수 있다")
     void academyCanUpdateInvoiceAmount() throws Exception {
         BillingFixture fixture = fixtureWithInvoice("billing-update@ringdu.com", 300_000L);
@@ -271,6 +346,26 @@ class StudentBillingControllerTest {
     private org.springframework.test.web.servlet.ResultActions ensureCurrent(BillingFixture fixture) throws Exception {
         return mockMvc.perform(post(billingPath(fixture.student().getId()) + "/invoices/ensure-current")
                 .header("Authorization", bearer(fixture.token())));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions createManualInvoice(
+            BillingFixture fixture,
+            String billingType,
+            String startMonth,
+            String endMonth,
+            Long amount
+    ) throws Exception {
+        return mockMvc.perform(post(billingPath(fixture.student().getId()) + "/invoices")
+                .header("Authorization", bearer(fixture.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                        "billingType", billingType,
+                        "billingPeriodStartMonth", startMonth,
+                        "billingPeriodEndMonth", endMonth,
+                        "dueDate", "2026-08-01",
+                        "amount", amount,
+                        "memo", "임의 청구 테스트"
+                ))));
     }
 
     private org.springframework.test.web.servlet.ResultActions updateInvoice(

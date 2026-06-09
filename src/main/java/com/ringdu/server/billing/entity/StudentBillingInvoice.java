@@ -12,7 +12,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDate;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -23,13 +22,13 @@ import org.hibernate.annotations.Check;
 @Entity
 @Table(
         name = "student_billing_invoices",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_student_billing_invoices_academy_student_month",
-                columnNames = {"academy_id", "student_profile_id", "billing_month"}
-        ),
         indexes = {
                 @Index(name = "idx_student_billing_invoices_academy_student", columnList = "academy_id, student_profile_id"),
-                @Index(name = "idx_student_billing_invoices_billing_month", columnList = "billing_month")
+                @Index(name = "idx_student_billing_invoices_billing_month", columnList = "billing_month"),
+                @Index(
+                        name = "idx_student_billing_invoices_regular_month",
+                        columnList = "academy_id, student_profile_id, billing_type, billing_month"
+                )
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -48,6 +47,16 @@ public class StudentBillingInvoice extends BaseEntity {
 
     @Column(name = "billing_month", nullable = false, length = 7)
     private String billingMonth;
+
+    @Column(name = "billing_period_start_month", length = 7)
+    private String billingPeriodStartMonth;
+
+    @Column(name = "billing_period_end_month", length = 7)
+    private String billingPeriodEndMonth;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_type", length = 20)
+    private StudentBillingType billingType;
 
     @Column(name = "issued_date", nullable = false)
     private LocalDate issuedDate;
@@ -71,7 +80,10 @@ public class StudentBillingInvoice extends BaseEntity {
     public StudentBillingInvoice(
             Long academyId,
             Long studentProfileId,
+            StudentBillingType billingType,
             String billingMonth,
+            String billingPeriodStartMonth,
+            String billingPeriodEndMonth,
             LocalDate issuedDate,
             LocalDate dueDate,
             Long amount,
@@ -79,13 +91,28 @@ public class StudentBillingInvoice extends BaseEntity {
     ) {
         this.academyId = academyId;
         this.studentProfileId = studentProfileId;
+        this.billingType = billingType;
         this.billingMonth = billingMonth;
+        this.billingPeriodStartMonth = billingPeriodStartMonth;
+        this.billingPeriodEndMonth = billingPeriodEndMonth;
         this.issuedDate = issuedDate;
         this.dueDate = dueDate;
         this.amount = amount;
         this.paidAmount = 0L;
         this.status = StudentBillingInvoiceStatus.UNPAID;
         this.memo = memo;
+    }
+
+    public StudentBillingType getEffectiveBillingType() {
+        return billingType == null ? StudentBillingType.REGULAR : billingType;
+    }
+
+    public String getEffectiveBillingPeriodStartMonth() {
+        return billingPeriodStartMonth == null ? billingMonth : billingPeriodStartMonth;
+    }
+
+    public String getEffectiveBillingPeriodEndMonth() {
+        return billingPeriodEndMonth == null ? billingMonth : billingPeriodEndMonth;
     }
 
     public void updateAmount(Long amount, String memo) {

@@ -3,6 +3,7 @@ package com.ringdu.server.billing.service;
 import com.ringdu.server.academy.entity.Academy;
 import com.ringdu.server.academy.repository.AcademyRepository;
 import com.ringdu.server.billing.dto.StudentBillingEnsureCurrentResponse;
+import com.ringdu.server.billing.dto.StudentBillingInvoiceCreateRequest;
 import com.ringdu.server.billing.dto.StudentBillingInvoiceResponse;
 import com.ringdu.server.billing.dto.StudentBillingInvoiceUpdateRequest;
 import com.ringdu.server.billing.dto.StudentBillingPaymentRequest;
@@ -12,6 +13,7 @@ import com.ringdu.server.billing.dto.StudentBillingSummaryResponse;
 import com.ringdu.server.billing.entity.StudentBillingInvoice;
 import com.ringdu.server.billing.entity.StudentBillingPayment;
 import com.ringdu.server.billing.entity.StudentBillingSetting;
+import com.ringdu.server.billing.entity.StudentBillingType;
 import com.ringdu.server.billing.repository.StudentBillingInvoiceRepository;
 import com.ringdu.server.billing.repository.StudentBillingPaymentRepository;
 import com.ringdu.server.billing.repository.StudentBillingSettingRepository;
@@ -77,17 +79,20 @@ public class StudentBillingService {
     ) {
         BillingOwner owner = getOwner(academyUserId, studentProfileId);
         YearMonth billingMonth = toYearMonth(year, month);
-        return invoiceRepository
-                .findByAcademyIdAndStudentProfileIdAndBillingMonth(
-                        owner.academyId(),
-                        owner.studentProfileId(),
-                        billingMonth.toString()
-                )
-                .map(StudentBillingSummaryResponse::from)
-                .orElseGet(() -> StudentBillingSummaryResponse.withoutInvoice(
-                        billingMonth.toString(),
-                        canGenerate(owner, billingMonth, LocalDate.now(clock))
-                ));
+        String billingMonthValue = billingMonth.toString();
+        List<StudentBillingInvoice> invoices = invoiceRepository
+                .findAllByAcademyIdAndStudentProfileIdAndBillingMonthOrderByIdAsc(
+                        owner.academyId(), owner.studentProfileId(), billingMonthValue
+                );
+        boolean hasRegularInvoice = !invoiceRepository.findRegularInvoices(
+                owner.academyId(), owner.studentProfileId(), billingMonthValue
+        ).isEmpty();
+        return StudentBillingSummaryResponse.fromInvoices(
+                billingMonthValue,
+                invoices,
+                hasRegularInvoice,
+                !hasRegularInvoice && canGenerate(owner, billingMonth, LocalDate.now(clock))
+        );
     }
 
     @Transactional(readOnly = true)
@@ -114,22 +119,23 @@ public class StudentBillingService {
         YearMonth currentMonth = YearMonth.from(today);
         String billingMonth = currentMonth.toString();
 
-        var existing = invoiceRepository.findByAcademyIdAndStudentProfileIdAndBillingMonth(
+        StudentBillingSetting setting = settingRepository
+                .findForUpdate(owner.academyId(), owner.studentProfileId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.BILLING_SETTING_NOT_FOUND));
+
+        var existing = invoiceRepository.findRegularInvoices(
                 owner.academyId(),
                 owner.studentProfileId(),
                 billingMonth
         );
-        if (existing.isPresent()) {
+        if (!existing.isEmpty()) {
             return new StudentBillingEnsureCurrentResponse(
                     false,
                     "이미 이번 달 청구가 생성되어 있습니다.",
-                    StudentBillingInvoiceResponse.from(existing.get())
+                    StudentBillingInvoiceResponse.from(existing.get(0))
             );
         }
 
-        StudentBillingSetting setting = settingRepository
-                .findByAcademyIdAndStudentProfileId(owner.academyId(), owner.studentProfileId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.BILLING_SETTING_NOT_FOUND));
         if (today.getDayOfMonth() < setting.getDueDay()) {
             return new StudentBillingEnsureCurrentResponse(false, "아직 수납 기준일 전입니다.", null);
         }
@@ -137,6 +143,9 @@ public class StudentBillingService {
         StudentBillingInvoice invoice = invoiceRepository.save(new StudentBillingInvoice(
                 owner.academyId(),
                 owner.studentProfileId(),
+                StudentBillingType.REGULAR,
+                billingMonth,
+                billingMonth,
                 billingMonth,
                 today,
                 currentMonth.atDay(setting.getDueDay()),
@@ -148,6 +157,34 @@ public class StudentBillingService {
                 currentMonth.getYear() + "년 " + currentMonth.getMonthValue() + "월 청구가 생성되었습니다.",
                 StudentBillingInvoiceResponse.from(invoice)
         );
+    }
+
+    @Transactional
+    public StudentBillingInvoiceResponse createInvoice(
+            Long academyUserId,
+            Long studentProfileId,
+            StudentBillingInvoiceCreateRequest request
+    ) {
+        BillingOwner owner = getOwner(academyUserId, studentProfileId);
+        YearMonth startMonth = parseYearMonth(request.billingPeriodStartMonth());
+        YearMonth endMonth = parseYearMonth(request.billingPeriodEndMonth());
+        if (startMonth.isAfter(endMonth)) {
+            throw new BusinessException(ErrorCode.BILLING_PERIOD_INVALID);
+        }
+
+        StudentBillingInvoice invoice = invoiceRepository.save(new StudentBillingInvoice(
+                owner.academyId(),
+                owner.studentProfileId(),
+                request.billingType(),
+                startMonth.toString(),
+                startMonth.toString(),
+                endMonth.toString(),
+                LocalDate.now(clock),
+                request.dueDate(),
+                request.amount(),
+                normalizeMemo(request.memo())
+        ));
+        return StudentBillingInvoiceResponse.from(invoice);
     }
 
     @Transactional
@@ -230,6 +267,14 @@ public class StudentBillingService {
             return YearMonth.of(year, month);
         } catch (DateTimeException exception) {
             throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private YearMonth parseYearMonth(String value) {
+        try {
+            return YearMonth.parse(value);
+        } catch (DateTimeException exception) {
+            throw new BusinessException(ErrorCode.BILLING_PERIOD_INVALID);
         }
     }
 

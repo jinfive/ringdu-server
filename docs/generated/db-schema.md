@@ -445,7 +445,7 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ### 설명
 
-학생별 월 청구 금액과 누적 수납 상태를 저장한다.
+학생별 정규 및 임의 청구 금액, 청구 기간, 누적 수납 상태를 저장한다.
 
 ### 컬럼
 
@@ -455,6 +455,9 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 | academy_id | bigint | No | 학원 ID |
 | student_profile_id | bigint | No | 학생 프로필 ID |
 | billing_month | varchar(7) | No | 청구월(`YYYY-MM`) |
+| billing_period_start_month | varchar(7) | Yes | 청구 기간 시작월(`YYYY-MM`), 기존 데이터는 `billing_month` 사용 |
+| billing_period_end_month | varchar(7) | Yes | 청구 기간 종료월(`YYYY-MM`), 기존 데이터는 `billing_month` 사용 |
+| billing_type | varchar(20) | Yes | `REGULAR`, `PREPAID`, `MAKEUP`, `TEXTBOOK`, `ETC`, 기존 데이터는 `REGULAR`로 처리 |
 | issued_date | date | No | 청구 생성일 |
 | due_date | date | No | 납부 기준일 |
 | amount | bigint | No | 청구 금액 |
@@ -466,7 +469,9 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ### 제약조건
 
-- `academy_id + student_profile_id + billing_month`는 유일하다.
+- 정규 자동 청구는 애플리케이션에서 `academy_id + student_profile_id + billing_type + billing_month` 중복을 방지한다.
+- 임의 청구는 같은 기간에 여러 건 생성할 수 있다.
+- 애플리케이션 시작 시 기존 월 단위 유니크 제약을 idempotent하게 제거한다.
 - 청구 금액은 누적 수납 금액보다 작게 변경할 수 없다.
 
 ---

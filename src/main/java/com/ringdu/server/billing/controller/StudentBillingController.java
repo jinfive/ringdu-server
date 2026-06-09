@@ -1,6 +1,7 @@
 package com.ringdu.server.billing.controller;
 
 import com.ringdu.server.billing.dto.StudentBillingEnsureCurrentResponse;
+import com.ringdu.server.billing.dto.StudentBillingInvoiceCreateRequest;
 import com.ringdu.server.billing.dto.StudentBillingInvoiceResponse;
 import com.ringdu.server.billing.dto.StudentBillingInvoiceUpdateRequest;
 import com.ringdu.server.billing.dto.StudentBillingPaymentRequest;
@@ -83,6 +84,17 @@ public class StudentBillingController {
                 studentProfileId
         );
         return ApiResponse.success(response.message(), response);
+    }
+
+    @PostMapping("/invoices")
+    public ApiResponse<StudentBillingInvoiceResponse> createInvoice(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentProfileId,
+            @Valid @RequestBody StudentBillingInvoiceCreateRequest request
+    ) {
+        return ApiResponse.success("청구가 생성되었습니다.", billingService.createInvoice(
+                principal.userId(), studentProfileId, request
+        ));
     }
 
     @PutMapping("/invoices/{billingId}")
