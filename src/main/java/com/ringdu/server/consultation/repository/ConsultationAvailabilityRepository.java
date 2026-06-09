@@ -47,6 +47,25 @@ public interface ConsultationAvailabilityRepository extends JpaRepository<Consul
     );
 
     @Query("""
+            select count(availability) > 0
+            from ConsultationAvailability availability
+            where availability.academyId = :academyId
+              and availability.teacherUserId is null
+              and availability.dayOfWeek = :dayOfWeek
+              and availability.status = com.ringdu.server.consultation.entity.ConsultationAvailabilityStatus.ACTIVE
+              and (:excludedId is null or availability.id <> :excludedId)
+              and availability.startTime < :endTime
+              and :startTime < availability.endTime
+            """)
+    boolean existsOverlappingActiveAcademy(
+            @Param("academyId") Long academyId,
+            @Param("dayOfWeek") DayOfWeek dayOfWeek,
+            @Param("startTime") LocalTime startTime,
+            @Param("endTime") LocalTime endTime,
+            @Param("excludedId") Long excludedId
+    );
+
+    @Query("""
             select availability
             from ConsultationAvailability availability
             where availability.academyId = :academyId
@@ -59,6 +78,22 @@ public interface ConsultationAvailabilityRepository extends JpaRepository<Consul
     List<ConsultationAvailability> findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
             @Param("academyId") Long academyId,
             @Param("teacherUserId") Long teacherUserId,
+            @Param("consultationType") ConsultationType consultationType,
+            @Param("status") ConsultationAvailabilityStatus status
+    );
+
+    @Query("""
+            select availability
+            from ConsultationAvailability availability
+            where availability.academyId = :academyId
+              and availability.teacherUserId is null
+              and availability.status = :status
+              and (availability.consultationType = :consultationType
+                   or availability.consultationType = com.ringdu.server.consultation.entity.ConsultationType.ALL)
+            order by availability.dayOfWeek asc, availability.startTime asc, availability.id asc
+            """)
+    List<ConsultationAvailability> findActiveAcademyByConsultationType(
+            @Param("academyId") Long academyId,
             @Param("consultationType") ConsultationType consultationType,
             @Param("status") ConsultationAvailabilityStatus status
     );

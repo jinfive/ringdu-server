@@ -98,4 +98,10 @@ public class ConsultationAvailability extends BaseEntity {
     public void deactivate() {
         this.status = ConsultationAvailabilityStatus.INACTIVE;
     }
+
+    public ConsultationConsultantType getConsultantType() {
+        return teacherUserId == null
+                ? ConsultationConsultantType.ACADEMY_ACCOUNT
+                : ConsultationConsultantType.TEACHER;
+    }
 }

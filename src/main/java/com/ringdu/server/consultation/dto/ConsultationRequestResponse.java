@@ -1,6 +1,7 @@
 package com.ringdu.server.consultation.dto;
 
 import com.ringdu.server.consultation.entity.ConsultationRequest;
+import com.ringdu.server.consultation.entity.ConsultationConsultantType;
 import com.ringdu.server.consultation.entity.ConsultationRequestStatus;
 import com.ringdu.server.consultation.entity.ConsultationRequestType;
 import com.ringdu.server.consultation.entity.ConsultationTopic;
@@ -14,6 +15,8 @@ public record ConsultationRequestResponse(
         Long studentProfileId,
         String studentName,
         String parentPhone,
+        ConsultationConsultantType consultantType,
+        String consultantName,
         Long teacherUserId,
         String teacherName,
         LocalDate requestedDate,
@@ -42,6 +45,8 @@ public record ConsultationRequestResponse(
                 request.getStudentProfileId(),
                 studentName,
                 parentPhone,
+                request.getConsultantType(),
+                request.getConsultantType() == ConsultationConsultantType.ACADEMY_ACCOUNT ? "학원 상담" : teacherName,
                 request.getTeacherUserId(),
                 teacherName,
                 request.getRequestedDate(),

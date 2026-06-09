@@ -22,6 +22,7 @@ import com.ringdu.server.consultation.dto.ParentConsultationOptionResponse;
 import com.ringdu.server.consultation.dto.TeacherConsultationStudentResponse;
 import com.ringdu.server.consultation.entity.ConsultationAvailability;
 import com.ringdu.server.consultation.entity.ConsultationAvailabilityStatus;
+import com.ringdu.server.consultation.entity.ConsultationConsultantType;
 import com.ringdu.server.consultation.entity.ConsultationMemo;
 import com.ringdu.server.consultation.entity.ConsultationMemoStatus;
 import com.ringdu.server.consultation.entity.ConsultationMemoWriterRole;
@@ -85,7 +86,6 @@ public class ConsultationService {
                 );
         return availabilities
                 .stream()
-                .filter(availability -> availability.getTeacherUserId() != null)
                 .map(this::toAvailabilityResponse)
                 .toList();
     }
@@ -96,8 +96,8 @@ public class ConsultationService {
             ConsultationAvailabilityRequest request
     ) {
         Academy academy = getAcademy(academyUserId);
-        Long teacherUserId = requireTeacherUserId(request.teacherUserId());
-        validateTeacher(academy.getId(), teacherUserId);
+        ConsultationConsultantType consultantType = resolveConsultantType(request.consultantType(), request.teacherUserId());
+        Long teacherUserId = validateConsultant(academy.getId(), consultantType, request.teacherUserId());
         validateAvailabilityTime(request);
         validateAvailabilityOverlap(academy.getId(), teacherUserId, request, null);
         ConsultationAvailability availability = availabilityRepository.save(ConsultationAvailability.create(
@@ -120,12 +120,13 @@ public class ConsultationService {
         Academy academy = getAcademy(academyUserId);
         ConsultationAvailability availability = availabilityRepository.findByIdAndAcademyId(availabilityId, academy.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_AVAILABILITY_NOT_FOUND));
-        if (!Objects.equals(availability.getTeacherUserId(), requireTeacherUserId(request.teacherUserId()))) {
+        ConsultationConsultantType consultantType = resolveConsultantType(request.consultantType(), request.teacherUserId());
+        Long teacherUserId = validateConsultant(academy.getId(), consultantType, request.teacherUserId());
+        if (!Objects.equals(availability.getTeacherUserId(), teacherUserId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-        validateTeacher(academy.getId(), availability.getTeacherUserId());
         validateAvailabilityTime(request);
-        validateAvailabilityOverlap(academy.getId(), availability.getTeacherUserId(), request, availability.getId());
+        validateAvailabilityOverlap(academy.getId(), teacherUserId, request, availability.getId());
         availability.update(request.dayOfWeek(), request.startTime(), request.endTime(), request.consultationType());
         return toAvailabilityResponse(availability);
     }
@@ -154,6 +155,7 @@ public class ConsultationService {
     ) {
         Long academyId = requireAcademyId(request.academyId());
         validateTeacher(academyId, teacherUserId);
+        validateTeacherConsultantRequest(request.consultantType(), request.teacherUserId(), teacherUserId);
         validateAvailabilityTime(request);
         validateAvailabilityOverlap(academyId, teacherUserId, request, null);
         ConsultationAvailability availability = availabilityRepository.save(ConsultationAvailability.create(
@@ -178,6 +180,7 @@ public class ConsultationService {
         if (!Objects.equals(availability.getAcademyId(), requireAcademyId(request.academyId()))) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
+        validateTeacherConsultantRequest(request.consultantType(), request.teacherUserId(), teacherUserId);
         validateTeacher(availability.getAcademyId(), teacherUserId);
         validateAvailabilityTime(request);
         validateAvailabilityOverlap(availability.getAcademyId(), teacherUserId, request, availabilityId);
@@ -218,6 +221,7 @@ public class ConsultationService {
                         profile.getName(),
                         profile.getAcademyId(),
                         academyById.get(profile.getAcademyId()).getName(),
+                        getConsultantOptions(profile),
                         getTeacherOptions(profile)
                 ))
                 .toList();
@@ -232,9 +236,10 @@ public class ConsultationService {
     }
 
     @Transactional(readOnly = true)
-    public List<ParentConsultationDateAvailabilityResponse> getParentTeacherAvailability(
+    public List<ParentConsultationDateAvailabilityResponse> getParentConsultantAvailability(
             Long parentUserId,
             Long academyId,
+            ConsultationConsultantType consultantType,
             Long teacherUserId,
             Integer year,
             Integer month
@@ -245,23 +250,27 @@ public class ConsultationService {
         } catch (RuntimeException exception) {
             throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
         }
-        validateTeacher(academyId, teacherUserId);
-        validateParentHasAssignedTeacher(parentUserId, academyId, teacherUserId);
+        ConsultationConsultantType resolvedType = resolveConsultantType(consultantType, teacherUserId);
+        Long resolvedTeacherUserId = validateConsultant(academyId, resolvedType, teacherUserId);
+        validateParentHasConsultant(parentUserId, academyId, resolvedType, resolvedTeacherUserId);
 
-        List<ConsultationAvailability> availabilities =
-                availabilityRepository.findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
+        List<ConsultationAvailability> availabilities = resolvedType == ConsultationConsultantType.ACADEMY_ACCOUNT
+                ? availabilityRepository.findActiveAcademyByConsultationType(
                         academyId,
-                        teacherUserId,
+                        ConsultationType.ENROLLED_STUDENT,
+                        ConsultationAvailabilityStatus.ACTIVE
+                )
+                : availabilityRepository.findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
+                        academyId,
+                        resolvedTeacherUserId,
                         ConsultationType.ENROLLED_STUDENT,
                         ConsultationAvailabilityStatus.ACTIVE
                 );
-        List<ConsultationRequest> occupiedRequests = requestRepository.findOccupiedRequests(
-                academyId,
-                teacherUserId,
-                targetMonth.atDay(1),
-                targetMonth.atEndOfMonth(),
-                OCCUPIED_STATUSES
-        );
+        List<ConsultationRequest> occupiedRequests = resolvedType == ConsultationConsultantType.ACADEMY_ACCOUNT
+                ? requestRepository.findOccupiedAcademyRequests(
+                        academyId, targetMonth.atDay(1), targetMonth.atEndOfMonth(), OCCUPIED_STATUSES)
+                : requestRepository.findOccupiedRequests(
+                        academyId, resolvedTeacherUserId, targetMonth.atDay(1), targetMonth.atEndOfMonth(), OCCUPIED_STATUSES);
         List<ParentConsultationDateAvailabilityResponse> dates = new ArrayList<>();
         for (int day = 1; day <= targetMonth.lengthOfMonth(); day++) {
             LocalDate date = targetMonth.atDay(day);
@@ -300,8 +309,11 @@ public class ConsultationService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         validateRequestTime(request);
-        validateTeacher(request.academyId(), request.teacherUserId());
-        validateTeacherAssignedStudent(request.teacherUserId(), request.studentProfileId());
+        ConsultationConsultantType consultantType = resolveConsultantType(request.consultantType(), request.teacherUserId());
+        Long teacherUserId = validateConsultant(request.academyId(), consultantType, request.teacherUserId());
+        if (consultantType == ConsultationConsultantType.TEACHER) {
+            validateTeacherAssignedStudent(teacherUserId, request.studentProfileId());
+        }
         validateRequestAvailability(request);
         validateDuplicateRequest(request);
 
@@ -309,7 +321,7 @@ public class ConsultationService {
                 request.academyId(),
                 request.studentProfileId(),
                 parentUserId,
-                request.teacherUserId(),
+                teacherUserId,
                 request.requestedDate(),
                 request.requestedStartTime(),
                 request.requestedEndTime(),
@@ -326,7 +338,8 @@ public class ConsultationService {
             LocalDate from,
             LocalDate to,
             ConsultationRequestType type,
-            Long studentProfileId
+            Long studentProfileId,
+            boolean activeOnly
     ) {
         Academy academy = getAcademy(academyUserId);
         return requestRepository.findAcademyRequests(
@@ -338,6 +351,7 @@ public class ConsultationService {
                         studentProfileId
                 )
                 .stream()
+                .filter(request -> !activeOnly || OCCUPIED_STATUSES.contains(request.getStatus()))
                 .map(this::toResponse)
                 .toList();
     }
@@ -371,6 +385,7 @@ public class ConsultationService {
             ConsultationRequestActionRequest actionRequest
     ) {
         ConsultationRequest request = getAcademyConsultationRequest(academyUserId, requestId);
+        validateApprovedRequest(request);
         request.complete(memo(actionRequest));
         return toResponse(request);
     }
@@ -478,18 +493,12 @@ public class ConsultationService {
             LocalDate from,
             LocalDate to
     ) {
-        List<Long> assignedStudentIds;
-        if (studentProfileId != null) {
-            validateTeacherAssignedStudent(teacherUserId, studentProfileId);
-            assignedStudentIds = List.of(studentProfileId);
-        } else {
-            assignedStudentIds = getTeacherAssignedStudentIds(teacherUserId);
-        }
-        if (assignedStudentIds.isEmpty()) {
-            return List.of();
-        }
-        return requestRepository.findAllByStudentProfileIdInOrderByRequestedDateDescRequestedStartTimeDescIdDesc(assignedStudentIds)
+        return requestRepository.findAllByTeacherUserIdAndStatusInOrderByRequestedDateAscRequestedStartTimeAscIdAsc(
+                        teacherUserId,
+                        OCCUPIED_STATUSES
+                )
                 .stream()
+                .filter(request -> studentProfileId == null || Objects.equals(request.getStudentProfileId(), studentProfileId))
                 .filter(request -> status == null || request.getStatus() == status)
                 .filter(request -> from == null || !request.getRequestedDate().isBefore(from))
                 .filter(request -> to == null || !request.getRequestedDate().isAfter(to))
@@ -505,7 +514,10 @@ public class ConsultationService {
     ) {
         ConsultationRequest request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_REQUEST_NOT_FOUND));
-        validateTeacherAssignedStudent(teacherUserId, request.getStudentProfileId());
+        if (request.getConsultantType() != ConsultationConsultantType.TEACHER
+                || !Objects.equals(request.getTeacherUserId(), teacherUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
         if (request.getStatus() != ConsultationRequestStatus.APPROVED) {
             throw new BusinessException(ErrorCode.CONSULTATION_REQUEST_STATUS_INVALID);
         }
@@ -519,7 +531,12 @@ public class ConsultationService {
             throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
         }
         StudentProfile studentProfile = validateTeacherAssignedStudent(teacherUserId, request.studentProfileId());
-        validateConsultationRequestLink(studentProfile.getAcademyId(), studentProfile.getId(), request.consultationRequestId());
+        validateTeacherConsultationRequestLink(
+                teacherUserId,
+                studentProfile.getAcademyId(),
+                studentProfile.getId(),
+                request.consultationRequestId()
+        );
 
         ConsultationMemo memo = memoRepository.save(ConsultationMemo.create(
                 studentProfile.getAcademyId(),
@@ -563,14 +580,11 @@ public class ConsultationService {
             ConsultationAvailabilityRequest request,
             Long excludedAvailabilityId
     ) {
-        boolean overlapped = availabilityRepository.existsOverlappingActive(
-                academyId,
-                teacherUserId,
-                request.dayOfWeek(),
-                request.startTime(),
-                request.endTime(),
-                excludedAvailabilityId
-        );
+        boolean overlapped = teacherUserId == null
+                ? availabilityRepository.existsOverlappingActiveAcademy(
+                        academyId, request.dayOfWeek(), request.startTime(), request.endTime(), excludedAvailabilityId)
+                : availabilityRepository.existsOverlappingActive(
+                        academyId, teacherUserId, request.dayOfWeek(), request.startTime(), request.endTime(), excludedAvailabilityId);
         if (overlapped) {
             throw new BusinessException(ErrorCode.CONSULTATION_AVAILABILITY_TIME_OVERLAP);
         }
@@ -583,12 +597,14 @@ public class ConsultationService {
     }
 
     private void validateRequestAvailability(ConsultationRequestCreateRequest request) {
-        boolean available = availabilityRepository.findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
-                        request.academyId(),
-                        request.teacherUserId(),
-                        ConsultationType.ENROLLED_STUDENT,
-                        ConsultationAvailabilityStatus.ACTIVE
-                )
+        ConsultationConsultantType consultantType = resolveConsultantType(request.consultantType(), request.teacherUserId());
+        List<ConsultationAvailability> availabilities = consultantType == ConsultationConsultantType.ACADEMY_ACCOUNT
+                ? availabilityRepository.findActiveAcademyByConsultationType(
+                        request.academyId(), ConsultationType.ENROLLED_STUDENT, ConsultationAvailabilityStatus.ACTIVE)
+                : availabilityRepository.findActiveByAcademyIdAndTeacherUserIdAndConsultationType(
+                        request.academyId(), request.teacherUserId(), ConsultationType.ENROLLED_STUDENT,
+                        ConsultationAvailabilityStatus.ACTIVE);
+        boolean available = availabilities
                 .stream()
                 .anyMatch(availability ->
                         availability.getDayOfWeek() == request.requestedDate().getDayOfWeek()
@@ -601,14 +617,14 @@ public class ConsultationService {
     }
 
     private void validateDuplicateRequest(ConsultationRequestCreateRequest request) {
-        boolean exists = requestRepository.existsOccupiedTime(
-                request.academyId(),
-                request.teacherUserId(),
-                request.requestedDate(),
-                request.requestedStartTime(),
-                request.requestedEndTime(),
-                OCCUPIED_STATUSES
-        );
+        ConsultationConsultantType consultantType = resolveConsultantType(request.consultantType(), request.teacherUserId());
+        boolean exists = consultantType == ConsultationConsultantType.ACADEMY_ACCOUNT
+                ? requestRepository.existsOccupiedAcademyTime(
+                        request.academyId(), request.requestedDate(), request.requestedStartTime(),
+                        request.requestedEndTime(), OCCUPIED_STATUSES)
+                : requestRepository.existsOccupiedTime(
+                        request.academyId(), request.teacherUserId(), request.requestedDate(),
+                        request.requestedStartTime(), request.requestedEndTime(), OCCUPIED_STATUSES);
         if (exists) {
             throw new BusinessException(ErrorCode.CONSULTATION_REQUEST_ALREADY_EXISTS);
         }
@@ -686,12 +702,93 @@ public class ConsultationService {
                 .toList();
     }
 
-    private void validateParentHasAssignedTeacher(Long parentUserId, Long academyId, Long teacherUserId) {
+    private List<ParentConsultationOptionResponse.ConsultantOption> getConsultantOptions(StudentProfile profile) {
+        List<ParentConsultationOptionResponse.ConsultantOption> consultants = new ArrayList<>();
+        boolean academyAvailable = !availabilityRepository.findActiveAcademyByConsultationType(
+                profile.getAcademyId(),
+                ConsultationType.ENROLLED_STUDENT,
+                ConsultationAvailabilityStatus.ACTIVE
+        ).isEmpty();
+        consultants.add(new ParentConsultationOptionResponse.ConsultantOption(
+                ConsultationConsultantType.ACADEMY_ACCOUNT,
+                null,
+                "학원 상담",
+                "학원 대표 계정이 상담합니다.",
+                List.of(),
+                academyAvailable
+        ));
+        getTeacherOptions(profile).forEach(teacher -> consultants.add(
+                new ParentConsultationOptionResponse.ConsultantOption(
+                        ConsultationConsultantType.TEACHER,
+                        teacher.teacherUserId(),
+                        teacher.teacherName(),
+                        String.join(" · ", teacher.classNames()) + " 담당",
+                        teacher.classNames(),
+                        teacher.available()
+                )
+        ));
+        return List.copyOf(consultants);
+    }
+
+    private void validateParentHasConsultant(
+            Long parentUserId,
+            Long academyId,
+            ConsultationConsultantType consultantType,
+            Long teacherUserId
+    ) {
         boolean assigned = getParentConsultationOptions(parentUserId).stream()
                 .filter(option -> Objects.equals(option.academyId(), academyId))
-                .flatMap(option -> option.teachers().stream())
-                .anyMatch(teacher -> Objects.equals(teacher.teacherUserId(), teacherUserId));
+                .flatMap(option -> option.consultants().stream())
+                .anyMatch(consultant -> consultant.consultantType() == consultantType
+                        && Objects.equals(consultant.teacherUserId(), teacherUserId));
         if (!assigned) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private ConsultationConsultantType resolveConsultantType(
+            ConsultationConsultantType consultantType,
+            Long teacherUserId
+    ) {
+        ConsultationConsultantType resolved = consultantType != null
+                ? consultantType
+                : teacherUserId == null
+                        ? ConsultationConsultantType.ACADEMY_ACCOUNT
+                        : ConsultationConsultantType.TEACHER;
+        if (resolved == ConsultationConsultantType.ACADEMY_ACCOUNT && teacherUserId != null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        if (resolved == ConsultationConsultantType.TEACHER && teacherUserId == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return resolved;
+    }
+
+    private Long validateConsultant(
+            Long academyId,
+            ConsultationConsultantType consultantType,
+            Long teacherUserId
+    ) {
+        if (consultantType == ConsultationConsultantType.ACADEMY_ACCOUNT) {
+            if (teacherUserId != null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+            }
+            return null;
+        }
+        validateTeacher(academyId, teacherUserId);
+        return teacherUserId;
+    }
+
+    private void validateTeacherConsultantRequest(
+            ConsultationConsultantType consultantType,
+            Long requestedTeacherUserId,
+            Long currentTeacherUserId
+    ) {
+        ConsultationConsultantType resolved = consultantType == null
+                ? ConsultationConsultantType.TEACHER
+                : consultantType;
+        if (resolved != ConsultationConsultantType.TEACHER
+                || (requestedTeacherUserId != null && !Objects.equals(requestedTeacherUserId, currentTeacherUserId))) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
     }
@@ -723,9 +820,9 @@ public class ConsultationService {
         String academyName = academyRepository.findById(availability.getAcademyId())
                 .map(Academy::getName)
                 .orElse("");
-        String teacherName = userRepository.findById(availability.getTeacherUserId())
-                .map(User::getName)
-                .orElse("");
+        String teacherName = availability.getTeacherUserId() == null
+                ? null
+                : userRepository.findById(availability.getTeacherUserId()).map(User::getName).orElse(null);
         return ConsultationAvailabilityResponse.of(availability, academyName, teacherName);
     }
 
@@ -785,6 +882,30 @@ public class ConsultationService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_REQUEST_NOT_FOUND));
         if (!Objects.equals(request.getStudentProfileId(), studentProfileId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private void validateTeacherConsultationRequestLink(
+            Long teacherUserId,
+            Long academyId,
+            Long studentProfileId,
+            Long consultationRequestId
+    ) {
+        if (consultationRequestId == null) {
+            return;
+        }
+        ConsultationRequest request = requestRepository.findByIdAndAcademyId(consultationRequestId, academyId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONSULTATION_REQUEST_NOT_FOUND));
+        if (!Objects.equals(request.getStudentProfileId(), studentProfileId)
+                || request.getConsultantType() != ConsultationConsultantType.TEACHER
+                || !Objects.equals(request.getTeacherUserId(), teacherUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private void validateApprovedRequest(ConsultationRequest request) {
+        if (request.getStatus() != ConsultationRequestStatus.APPROVED) {
+            throw new BusinessException(ErrorCode.CONSULTATION_REQUEST_STATUS_INVALID);
         }
     }
 

@@ -81,7 +81,8 @@ public class AcademyConsultationController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) ConsultationRequestType type,
-            @RequestParam(required = false) Long studentProfileId
+            @RequestParam(required = false) Long studentProfileId,
+            @RequestParam(defaultValue = "false") boolean activeOnly
     ) {
         return ApiResponse.success(consultationService.getAcademyRequests(
                 principal.userId(),
@@ -89,7 +90,8 @@ public class AcademyConsultationController {
                 from,
                 to,
                 type,
-                studentProfileId
+                studentProfileId,
+                activeOnly
         ));
     }
 

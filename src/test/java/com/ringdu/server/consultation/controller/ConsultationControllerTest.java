@@ -302,6 +302,9 @@ class ConsultationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()))
+                .andExpect(jsonPath("$.data[0].consultants.length()").value(2))
+                .andExpect(jsonPath("$.data[0].consultants[0].consultantType").value("ACADEMY_ACCOUNT"))
+                .andExpect(jsonPath("$.data[0].consultants[1].consultantType").value("TEACHER"))
                 .andExpect(jsonPath("$.data[0].teachers.length()").value(1));
 
         mockMvc.perform(get("/api/parent/consultation-availability")
@@ -357,6 +360,86 @@ class ConsultationControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("memo", "완료했습니다."))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+    }
+
+    @Test
+    @DisplayName("학부모가 학원 대표 상담을 요청하면 학원만 처리하고 완료 후 활성 목록에서 제외한다")
+    void academyAccountConsultationFlow() throws Exception {
+        ConsultationFixture fixture = consultationFixture("consult-academy-account-flow@ringdu.com");
+
+        mockMvc.perform(post("/api/academies/me/consultation-availability")
+                        .header("Authorization", "Bearer " + fixture.academyToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "consultantType", "ACADEMY_ACCOUNT",
+                                "dayOfWeek", "MONDAY",
+                                "startTime", "14:00",
+                                "endTime", "16:00",
+                                "consultationType", "ENROLLED_STUDENT"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultantType").value("ACADEMY_ACCOUNT"))
+                .andExpect(jsonPath("$.data.consultantName").value("학원 상담"))
+                .andExpect(jsonPath("$.data.teacherUserId").doesNotExist());
+
+        mockMvc.perform(get("/api/parent/consultation-availability")
+                        .queryParam("academyId", String.valueOf(fixture.academy().getId()))
+                        .queryParam("consultantType", "ACADEMY_ACCOUNT")
+                        .queryParam("year", String.valueOf(monday().getYear()))
+                        .queryParam("month", String.valueOf(monday().getMonthValue()))
+                        .header("Authorization", "Bearer " + fixture.parentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.date == '" + monday() + "')]").isNotEmpty());
+
+        Map<String, Object> requestPayload = new HashMap<>();
+        requestPayload.put("academyId", fixture.academy().getId());
+        requestPayload.put("studentProfileId", fixture.studentProfileId());
+        requestPayload.put("consultantType", "ACADEMY_ACCOUNT");
+        requestPayload.put("teacherUserId", null);
+        requestPayload.put("requestedDate", monday().toString());
+        requestPayload.put("requestedStartTime", "14:00");
+        requestPayload.put("requestedEndTime", "15:00");
+        requestPayload.put("topic", "STUDY");
+        requestPayload.put("content", "학원 대표 상담 요청입니다.");
+
+        mockMvc.perform(post("/api/parent/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.parentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(requestPayload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consultantType").value("ACADEMY_ACCOUNT"))
+                .andExpect(jsonPath("$.data.consultantName").value("학원 상담"));
+
+        Long requestId = consultationRequestRepository.findAllByParentUserIdOrderByCreatedAtDescIdDesc(fixture.parent().getId())
+                .get(0)
+                .getId();
+
+        mockMvc.perform(get("/api/teacher/consultation-requests")
+                        .header("Authorization", "Bearer " + fixture.teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+
+        mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/complete", requestId)
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("activeOnly", "true")
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mockMvc.perform(get("/api/academies/me/consultation-requests")
+                        .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
+                        .header("Authorization", "Bearer " + fixture.academyToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
     }
 
     @Test
@@ -718,8 +801,8 @@ class ConsultationControllerTest {
     }
 
     @Test
-    @DisplayName("TEACHER 상담 요청 조회는 요청 담당 선생님이 아니라 담당 학생 기준으로 동작한다")
-    void teacherCanListAssignedStudentRequestEvenWhenRequestTeacherIsDifferent() throws Exception {
+    @DisplayName("TEACHER 상담 요청 조회는 본인에게 배정된 요청만 반환한다")
+    void teacherCannotListRequestAssignedToDifferentTeacher() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-teacher-request-student-scope@ringdu.com");
         User otherTeacher = createConnectedTeacher(new AcademyContext(fixture.academyToken(), fixture.academy()), "other-request-teacher@ringdu.com");
         AcademyClass otherClass = classRepository.save(AcademyClass.create(
@@ -765,13 +848,11 @@ class ConsultationControllerTest {
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
                         .header("Authorization", "Bearer " + fixture.teacherToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].teacherUserId").value(otherTeacher.getId()))
-                .andExpect(jsonPath("$.data[0].studentProfileId").value(fixture.studentProfileId()));
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
-    @DisplayName("TEACHER가 APPROVED 상담 요청을 완료 처리하면 ACADEMY와 TEACHER 조회 모두 COMPLETED로 보인다")
+    @DisplayName("TEACHER가 APPROVED 상담 요청을 완료 처리하면 활성 목록에서 사라지고 ACADEMY 이력에는 남는다")
     void teacherCanCompleteApprovedRequestAndStatusIsShared() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-teacher-complete@ringdu.com");
         createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
@@ -799,11 +880,9 @@ class ConsultationControllerTest {
 
         mockMvc.perform(get("/api/teacher/consultation-memos/requests")
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
-                        .queryParam("status", "COMPLETED")
                         .header("Authorization", "Bearer " + fixture.teacherToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
@@ -831,7 +910,8 @@ class ConsultationControllerTest {
         mockMvc.perform(get("/api/teacher/consultation-memos/requests")
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
                         .header("Authorization", "Bearer " + accessToken(otherTeacher)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
 
         mockMvc.perform(post("/api/academies/me/consultation-requests/{requestId}/approve", requestId)
                         .header("Authorization", "Bearer " + fixture.academyToken())
@@ -847,8 +927,8 @@ class ConsultationControllerTest {
     }
 
     @Test
-    @DisplayName("학원이 완료 처리하면 TEACHER 상담 요청 조회에서도 COMPLETED로 보인다")
-    void academyCompleteStatusIsVisibleToTeacher() throws Exception {
+    @DisplayName("학원이 완료 처리하면 TEACHER 활성 상담 요청 목록에서 사라진다")
+    void academyCompletedRequestIsHiddenFromTeacherActiveList() throws Exception {
         ConsultationFixture fixture = consultationFixture("consult-academy-complete-visible@ringdu.com");
         createAvailability(fixture, DayOfWeek.MONDAY, 14, 16);
         Long requestId = createRequest(fixture, monday(), 14, 15);
@@ -866,11 +946,9 @@ class ConsultationControllerTest {
 
         mockMvc.perform(get("/api/teacher/consultation-memos/requests")
                         .queryParam("studentProfileId", String.valueOf(fixture.studentProfileId()))
-                        .queryParam("status", "COMPLETED")
                         .header("Authorization", "Bearer " + fixture.teacherToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].consultationRequestId").value(requestId));
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
