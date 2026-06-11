@@ -415,5 +415,88 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ---
 
+## student_billing_settings
+
+### 설명
+
+학생별 월 수강료와 수납 기준일을 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 수납 설정 ID |
+| academy_id | bigint | No | 학원 ID |
+| student_profile_id | bigint | No | 학생 프로필 ID |
+| monthly_tuition | bigint | No | 월 수강료(원) |
+| due_day | integer | No | 매월 수납 기준일(1~31), 없는 날짜는 월말로 처리 |
+| memo | text | Yes | 수납 설정 메모 |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+### 제약조건
+
+- `academy_id + student_profile_id`는 유일하다.
+- `monthly_tuition >= 0`, `due_day`는 1~31 범위다.
+
+---
+
+## student_billing_invoices
+
+### 설명
+
+학생별 정규 및 임의 청구 금액, 청구 기간, 누적 수납 상태를 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 청구서 ID |
+| academy_id | bigint | No | 학원 ID |
+| student_profile_id | bigint | No | 학생 프로필 ID |
+| billing_month | varchar(7) | No | 청구월(`YYYY-MM`) |
+| billing_period_start_month | varchar(7) | Yes | 청구 기간 시작월(`YYYY-MM`), 기존 데이터는 `billing_month` 사용 |
+| billing_period_end_month | varchar(7) | Yes | 청구 기간 종료월(`YYYY-MM`), 기존 데이터는 `billing_month` 사용 |
+| billing_type | varchar(20) | Yes | `REGULAR`, `PREPAID`, `MAKEUP`, `TEXTBOOK`, `ETC`, 기존 데이터는 `REGULAR`로 처리 |
+| issued_date | date | No | 청구 생성일 |
+| due_date | date | No | 납부 기준일 |
+| amount | bigint | No | 청구 금액 |
+| paid_amount | bigint | No | 누적 수납 금액 |
+| status | varchar(20) | No | `UNPAID`, `PARTIAL`, `PAID`, `CANCELED` |
+| memo | text | Yes | 청구 메모 |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+### 제약조건
+
+- 정규 자동 청구는 애플리케이션에서 `academy_id + student_profile_id + billing_type + billing_month` 중복을 방지한다.
+- 임의 청구는 같은 기간에 여러 건 생성할 수 있다.
+- 애플리케이션 시작 시 기존 월 단위 유니크 제약을 idempotent하게 제거한다.
+- 청구 금액은 누적 수납 금액보다 작게 변경할 수 없다.
+
+---
+
+## student_billing_payments
+
+### 설명
+
+청구서에 반영된 개별 수납 이력을 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 수납 이력 ID |
+| billing_invoice_id | bigint | No | 청구서 ID |
+| academy_id | bigint | No | 학원 ID |
+| student_profile_id | bigint | No | 학생 프로필 ID |
+| amount | bigint | No | 수납 금액 |
+| payment_date | date | No | 수납일 |
+| memo | text | Yes | 수납 메모 |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+---
+
 ## users
 ... (기존 내용 유지)
