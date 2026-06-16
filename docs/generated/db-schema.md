@@ -415,6 +415,65 @@ JPA Entity와 실제 DB 컬럼명이 다르면 실제 DB 컬럼명을 우선한�
 
 ---
 
+## homeworks
+
+### 설명
+
+선생님이 담당 수업에 등록한 숙제 본문과 배정 방식을 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 숙제 ID |
+| academy_id | bigint | No | 학원 ID |
+| class_id | bigint | No | 수업 ID |
+| title | varchar(150) | No | 숙제 제목 |
+| content | text | No | 숙제 내용 |
+| due_date | date | No | 숙제 기한 |
+| target_type | varchar(20) | No | `CLASS`, `INDIVIDUAL` |
+| memo | text | Yes | 숙제 메모 |
+| created_by_teacher_user_id | bigint | No | 등록 선생님 사용자 ID |
+| status | varchar(20) | No | `ACTIVE`, `DELETED` |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+### 인덱스
+
+- `academy_id`
+- `class_id + status`
+- `due_date`
+
+---
+
+## homework_students
+
+### 설명
+
+숙제를 배정받은 학생과 선생님 검사 결과를 저장한다.
+
+### 컬럼
+
+| 컬럼명 | 타입 | Null 허용 | 설명 |
+|---|---|---:|---|
+| id | bigint | No | 학생별 숙제 ID |
+| homework_id | bigint | No | 숙제 ID |
+| academy_id | bigint | No | 학원 ID |
+| class_id | bigint | No | 수업 ID |
+| student_profile_id | bigint | No | 학생 프로필 ID |
+| status | varchar(20) | No | `DONE`, `NOT_DONE` |
+| memo | text | Yes | 검사 메모 |
+| created_at | timestamp | No | 생성 일시 |
+| updated_at | timestamp | No | 수정 일시 |
+
+### 제약조건
+
+- `homework_id + student_profile_id`는 유일하다.
+- 숙제 생성 시 상태는 `NOT_DONE`이다.
+- 검사 상태는 `DONE`, `NOT_DONE`만 사용한다.
+
+---
+
 ## student_billing_settings
 
 ### 설명
