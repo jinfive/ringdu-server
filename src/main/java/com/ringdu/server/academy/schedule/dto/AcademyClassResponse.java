@@ -8,12 +8,15 @@ import com.ringdu.server.academy.schedule.entity.ScheduleStatus;
 import com.ringdu.server.user.entity.User;
 
 import java.time.LocalTime;
+import java.util.List;
 
 public record AcademyClassResponse(
         Long classId,
         String name,
         AcademyClassDayOfWeek dayOfWeek,
         String dayLabel,
+        List<AcademyClassDayOfWeek> dayOfWeeks,
+        List<String> dayLabels,
         Long classroomId,
         String classroomName,
         Long teacherUserId,
@@ -38,6 +41,8 @@ public record AcademyClassResponse(
                 academyClass.getName(),
                 academyClass.getDayOfWeek(),
                 academyClass.getDayOfWeek().getLabel(),
+                academyClass.getDayOfWeeks(),
+                academyClass.getDayOfWeeks().stream().map(AcademyClassDayOfWeek::getLabel).toList(),
                 classroom.getId(),
                 classroom.getName(),
                 academyClass.getTeacherUserId(),

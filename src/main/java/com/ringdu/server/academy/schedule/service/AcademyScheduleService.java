@@ -84,13 +84,14 @@ public class AcademyScheduleService {
         AcademyClassroom classroom = getActiveClassroom(academy.getId(), request.classroomId());
         User teacher = getValidTeacher(academy.getId(), request.teacherUserId());
         validateNoOverlap(academy.getId(), request, null);
+        List<AcademyClassDayOfWeek> dayOfWeeks = resolveDayOfWeeks(request);
 
         AcademyClass academyClass = classRepository.save(AcademyClass.create(
                 academy.getId(),
                 classroom.getId(),
                 request.teacherUserId(),
                 request.name(),
-                request.dayOfWeek(),
+                dayOfWeeks,
                 request.startTime(),
                 request.endTime(),
                 request.memo()
@@ -151,12 +152,13 @@ public class AcademyScheduleService {
         AcademyClassroom classroom = getActiveClassroom(academy.getId(), request.classroomId());
         User teacher = getValidTeacher(academy.getId(), request.teacherUserId());
         validateNoOverlap(academy.getId(), request, classId);
+        List<AcademyClassDayOfWeek> dayOfWeeks = resolveDayOfWeeks(request);
 
         academyClass.update(
                 classroom.getId(),
                 request.teacherUserId(),
                 request.name(),
-                request.dayOfWeek(),
+                dayOfWeeks,
                 request.startTime(),
                 request.endTime(),
                 request.memo()
@@ -277,19 +279,37 @@ public class AcademyScheduleService {
         if (!request.startTime().isBefore(request.endTime())) {
             throw new BusinessException(ErrorCode.ACADEMY_CLASS_TIME_INVALID);
         }
+        resolveDayOfWeeks(request);
     }
 
     private void validateNoOverlap(Long academyId, AcademyClassRequest request, Long excludedClassId) {
-        boolean overlap = classRepository.existsOverlappingActiveClass(
-                academyId,
-                request.classroomId(),
-                request.dayOfWeek(),
-                request.startTime(),
-                request.endTime(),
-                excludedClassId
-        );
-        if (overlap) {
-            throw new BusinessException(ErrorCode.ACADEMY_CLASS_TIME_OVERLAP);
+        for (AcademyClassDayOfWeek dayOfWeek : resolveDayOfWeeks(request)) {
+            boolean overlap = classRepository.existsOverlappingActiveClass(
+                    academyId,
+                    request.classroomId(),
+                    dayOfWeek,
+                    request.startTime(),
+                    request.endTime(),
+                    excludedClassId
+            );
+            if (overlap) {
+                throw new BusinessException(ErrorCode.ACADEMY_CLASS_TIME_OVERLAP);
+            }
         }
+    }
+
+    private List<AcademyClassDayOfWeek> resolveDayOfWeeks(AcademyClassRequest request) {
+        List<AcademyClassDayOfWeek> days = request.dayOfWeeks();
+        if (days == null || days.isEmpty()) {
+            days = request.dayOfWeek() == null ? List.of() : List.of(request.dayOfWeek());
+        }
+        List<AcademyClassDayOfWeek> normalized = days.stream()
+                .distinct()
+                .sorted()
+                .toList();
+        if (normalized.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return normalized;
     }
 }

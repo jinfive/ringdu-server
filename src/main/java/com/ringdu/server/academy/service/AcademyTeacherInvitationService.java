@@ -78,6 +78,18 @@ public class AcademyTeacherInvitationService {
                 .toList();
     }
 
+    @Transactional
+    public TeacherInvitationResponse cancelInvitation(Long academyUserId, Long invitationId) {
+        Academy academy = getAcademyForUser(academyUserId);
+        AcademyTeacherInvitation invitation = getInvitation(invitationId);
+        if (!academy.getId().equals(invitation.getAcademy().getId())) {
+            throw new BusinessException(ErrorCode.TEACHER_INVITATION_NOT_FOUND);
+        }
+
+        invitation.cancel(academyUserId, LocalDateTime.now());
+        return TeacherInvitationResponse.from(invitation);
+    }
+
     @Transactional(readOnly = true)
     public List<MyTeacherInvitationResponse> getMyTeacherInvitations(Long teacherUserId) {
         User teacher = getTeacherUser(teacherUserId);

@@ -1,0 +1,59 @@
+package com.ringdu.server.homework.controller;
+
+import com.ringdu.server.global.common.ApiResponse;
+import com.ringdu.server.global.security.CustomUserPrincipal;
+import com.ringdu.server.homework.dto.HomeworkInquiryResponse;
+import com.ringdu.server.homework.entity.HomeworkStudentStatus;
+import com.ringdu.server.homework.service.HomeworkService;
+import java.time.LocalDate;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequiredArgsConstructor
+public class HomeworkInquiryController {
+
+    private final HomeworkService homeworkService;
+
+    @GetMapping("/api/academies/me/students/{studentProfileId}/homeworks")
+    @PreAuthorize("hasRole('ACADEMY')")
+    public ApiResponse<List<HomeworkInquiryResponse>> getAcademyStudentHomeworks(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentProfileId,
+            @RequestParam(required = false) HomeworkStudentStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return ApiResponse.success(homeworkService.getAcademyStudentHomeworks(principal.userId(), studentProfileId, status, from, to));
+    }
+
+    @GetMapping("/api/student/homeworks")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ApiResponse<List<HomeworkInquiryResponse>> getStudentHomeworks(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @RequestParam(required = false) HomeworkStudentStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return ApiResponse.success(homeworkService.getStudentHomeworks(principal.userId(), status, from, to));
+    }
+
+    @GetMapping("/api/parent/children/{studentProfileId}/homeworks")
+    @PreAuthorize("hasRole('PARENT')")
+    public ApiResponse<List<HomeworkInquiryResponse>> getParentChildHomeworks(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long studentProfileId,
+            @RequestParam(required = false) HomeworkStudentStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return ApiResponse.success(homeworkService.getParentChildHomeworks(principal.userId(), studentProfileId, status, from, to));
+    }
+}

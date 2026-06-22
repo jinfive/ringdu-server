@@ -2,19 +2,25 @@ package com.ringdu.server.academy.schedule.entity;
 
 import com.ringdu.server.global.common.BaseEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Entity
@@ -49,6 +55,16 @@ public class AcademyClass extends BaseEntity {
     @Column(name = "day_of_week", nullable = false, length = 20)
     private AcademyClassDayOfWeek dayOfWeek;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "academy_class_days",
+            joinColumns = @JoinColumn(name = "academy_class_id"),
+            indexes = @Index(name = "idx_academy_class_days_day", columnList = "day_of_week")
+    )
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_of_week", nullable = false, length = 20)
+    private List<AcademyClassDayOfWeek> dayOfWeeks = new ArrayList<>();
+
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
 
@@ -67,7 +83,7 @@ public class AcademyClass extends BaseEntity {
             Long classroomId,
             Long teacherUserId,
             String name,
-            AcademyClassDayOfWeek dayOfWeek,
+            List<AcademyClassDayOfWeek> dayOfWeeks,
             LocalTime startTime,
             LocalTime endTime,
             String memo
@@ -76,7 +92,7 @@ public class AcademyClass extends BaseEntity {
         this.classroomId = classroomId;
         this.teacherUserId = teacherUserId;
         this.name = name;
-        this.dayOfWeek = dayOfWeek;
+        updateDayOfWeeks(dayOfWeeks);
         this.startTime = startTime;
         this.endTime = endTime;
         this.memo = memo;
@@ -88,19 +104,19 @@ public class AcademyClass extends BaseEntity {
             Long classroomId,
             Long teacherUserId,
             String name,
-            AcademyClassDayOfWeek dayOfWeek,
+            List<AcademyClassDayOfWeek> dayOfWeeks,
             LocalTime startTime,
             LocalTime endTime,
             String memo
     ) {
-        return new AcademyClass(academyId, classroomId, teacherUserId, name, dayOfWeek, startTime, endTime, memo);
+        return new AcademyClass(academyId, classroomId, teacherUserId, name, dayOfWeeks, startTime, endTime, memo);
     }
 
     public void update(
             Long classroomId,
             Long teacherUserId,
             String name,
-            AcademyClassDayOfWeek dayOfWeek,
+            List<AcademyClassDayOfWeek> dayOfWeeks,
             LocalTime startTime,
             LocalTime endTime,
             String memo
@@ -108,7 +124,7 @@ public class AcademyClass extends BaseEntity {
         this.classroomId = classroomId;
         this.teacherUserId = teacherUserId;
         this.name = name;
-        this.dayOfWeek = dayOfWeek;
+        updateDayOfWeeks(dayOfWeeks);
         this.startTime = startTime;
         this.endTime = endTime;
         this.memo = memo;
@@ -116,5 +132,25 @@ public class AcademyClass extends BaseEntity {
 
     public void deactivate() {
         this.status = ScheduleStatus.INACTIVE;
+    }
+
+    public List<AcademyClassDayOfWeek> getDayOfWeeks() {
+        if (dayOfWeeks == null || dayOfWeeks.isEmpty()) {
+            return List.of(dayOfWeek);
+        }
+        return List.copyOf(dayOfWeeks);
+    }
+
+    private void updateDayOfWeeks(List<AcademyClassDayOfWeek> dayOfWeeks) {
+        List<AcademyClassDayOfWeek> normalized = dayOfWeeks == null ? List.of() : dayOfWeeks.stream()
+                .distinct()
+                .sorted()
+                .toList();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("dayOfWeeks must not be empty");
+        }
+        this.dayOfWeek = normalized.get(0);
+        this.dayOfWeeks.clear();
+        this.dayOfWeeks.addAll(normalized);
     }
 }

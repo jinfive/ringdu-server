@@ -928,7 +928,7 @@ class ConsultationControllerTest {
                 2L,
                 otherTeacher.getId(),
                 "중등 수학 B반",
-                AcademyClassDayOfWeek.MONDAY,
+                java.util.List.of(AcademyClassDayOfWeek.MONDAY),
                 LocalTime.of(18, 0),
                 LocalTime.of(19, 0),
                 "테스트 메모"
@@ -1282,7 +1282,7 @@ class ConsultationControllerTest {
                 1L,
                 teacher.getId(),
                 "중등 수학 A반",
-                AcademyClassDayOfWeek.MONDAY,
+                java.util.List.of(AcademyClassDayOfWeek.MONDAY),
                 LocalTime.of(16, 0),
                 LocalTime.of(17, 30),
                 "테스트 메모"

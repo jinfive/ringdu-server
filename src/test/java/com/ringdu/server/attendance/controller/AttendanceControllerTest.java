@@ -547,6 +547,7 @@ class AttendanceControllerTest {
                         .content(objectMapper.writeValueAsString(new AcademyClassRequest(
                                 "중등 수학 A반",
                                 today,
+                                java.util.List.of(today),
                                 classroomId,
                                 teacherUserId,
                                 LocalTime.of(16, 0),

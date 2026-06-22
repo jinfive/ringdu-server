@@ -109,6 +109,40 @@ class AcademyTeacherInvitationControllerTest {
     }
 
     @Test
+    @DisplayName("ACADEMY는 보낸 PENDING 선생님 초대를 취소할 수 있다")
+    void academyCanCancelPendingInvitation() throws Exception {
+        String email = "controller-cancel-invitation-academy@ringdu.com";
+        String token = approvedAcademyAccessToken(email);
+        Long academyUserId = userRepository.findByEmail(email).orElseThrow().getId();
+        User teacher = saveUser("controller-cancel-invitation-teacher@ringdu.com", "010-2222-3010", Role.TEACHER);
+        Long invitationId = invitationService.createInvitation(academyUserId, invitationRequest(null, teacher.getPhone())).invitationId();
+
+        mockMvc.perform(post("/api/academies/me/teacher-invitations/{invitationId}/cancel", invitationId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CANCELED"));
+
+        mockMvc.perform(post("/api/teacher/invitations/{invitationId}/accept", invitationId)
+                        .header("Authorization", "Bearer " + accessToken(teacher)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("이미 수락된 선생님 초대는 취소할 수 없다")
+    void acceptedInvitationCannotBeCanceled() throws Exception {
+        String email = "controller-cancel-accepted-academy@ringdu.com";
+        String token = approvedAcademyAccessToken(email);
+        Long academyUserId = userRepository.findByEmail(email).orElseThrow().getId();
+        User teacher = saveUser("controller-cancel-accepted-teacher@ringdu.com", "010-2222-3011", Role.TEACHER);
+        Long invitationId = invitationService.createInvitation(academyUserId, invitationRequest(null, teacher.getPhone())).invitationId();
+        invitationService.acceptInvitation(teacher.getId(), invitationId);
+
+        mockMvc.perform(post("/api/academies/me/teacher-invitations/{invitationId}/cancel", invitationId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     @DisplayName("ACADEMY는 자기 학원의 소속 선생님 목록을 조회할 수 있다")
     void academyCanGetTeachers() throws Exception {
         String email = "controller-list-teacher-academy@ringdu.com";

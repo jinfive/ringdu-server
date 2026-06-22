@@ -62,7 +62,7 @@ public class AttendanceService {
     public List<TeacherTodayClassResponse> getTeacherTodayClasses(Long teacherUserId) {
         LocalDate today = LocalDate.now();
         AcademyClassDayOfWeek dayOfWeek = toAcademyDayOfWeek(today.getDayOfWeek());
-        List<AcademyClass> classes = classRepository.findAllByTeacherUserIdAndDayOfWeekAndStatusOrderByStartTimeAscIdAsc(
+        List<AcademyClass> classes = classRepository.findTeacherClassesByDay(
                 teacherUserId,
                 dayOfWeek,
                 ScheduleStatus.ACTIVE

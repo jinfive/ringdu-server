@@ -7,13 +7,14 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalTime;
+import java.util.List;
 
 public record AcademyClassRequest(
         @NotBlank
         @Size(max = 100)
         String name,
-        @NotNull
         AcademyClassDayOfWeek dayOfWeek,
+        List<AcademyClassDayOfWeek> dayOfWeeks,
         @NotNull
         Long classroomId,
         Long teacherUserId,

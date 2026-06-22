@@ -36,6 +36,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalTime;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -150,6 +151,87 @@ class AcademyScheduleControllerTest {
                 .andExpect(jsonPath("$.data.teacherName").value("테스트 선생"))
                 .andExpect(jsonPath("$.data.startTime").value("16:00"))
                 .andExpect(jsonPath("$.data.endTime").value("17:30"));
+    }
+
+    @Test
+    @DisplayName("ACADEMY는 여러 요일 수업을 생성하고 요일별 조회에서 모두 확인할 수 있다")
+    void academyCanCreateMultiDayClass() throws Exception {
+        AcademyContext context = academyContext("schedule-create-multi-day@ringdu.com");
+        Long classroomId = createClassroom(context, "1강의실");
+
+        mockMvc.perform(post("/api/academies/me/classes")
+                        .header("Authorization", "Bearer " + context.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AcademyClassRequest(
+                                "화목 수업",
+                                null,
+                                List.of(AcademyClassDayOfWeek.TUESDAY, AcademyClassDayOfWeek.THURSDAY),
+                                classroomId,
+                                null,
+                                LocalTime.parse("16:30"),
+                                LocalTime.parse("18:00"),
+                                "테스트 메모"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dayOfWeeks[0]").value("TUESDAY"))
+                .andExpect(jsonPath("$.data.dayOfWeeks[1]").value("THURSDAY"));
+
+        mockMvc.perform(get("/api/academies/me/classes")
+                        .param("dayOfWeek", "THURSDAY")
+                        .header("Authorization", "Bearer " + context.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").value("화목 수업"));
+    }
+
+    @Test
+    @DisplayName("ACADEMY는 수업 요일과 시간을 수정할 수 있다")
+    void academyCanUpdateClassTimeAndDays() throws Exception {
+        AcademyContext context = academyContext("schedule-update-class@ringdu.com");
+        Long classroomId = createClassroom(context, "1강의실");
+        Long classId = createClass(context, "수정 전 수업", AcademyClassDayOfWeek.MONDAY, classroomId, "16:00", "17:30");
+
+        mockMvc.perform(put("/api/academies/me/classes/{classId}", classId)
+                        .header("Authorization", "Bearer " + context.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AcademyClassRequest(
+                                "수정 후 수업",
+                                null,
+                                List.of(AcademyClassDayOfWeek.MONDAY, AcademyClassDayOfWeek.WEDNESDAY, AcademyClassDayOfWeek.FRIDAY),
+                                classroomId,
+                                null,
+                                LocalTime.parse("16:30"),
+                                LocalTime.parse("18:00"),
+                                "수정 메모"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("수정 후 수업"))
+                .andExpect(jsonPath("$.data.startTime").value("16:30"))
+                .andExpect(jsonPath("$.data.endTime").value("18:00"))
+                .andExpect(jsonPath("$.data.dayOfWeeks.length()").value(3));
+    }
+
+    @Test
+    @DisplayName("수업 수정 시 같은 요일/강의실/시간이 겹치면 실패한다")
+    void overlappingUpdateFails() throws Exception {
+        AcademyContext context = academyContext("schedule-update-overlap@ringdu.com");
+        Long classroomId = createClassroom(context, "1강의실");
+        createClass(context, "기존 수업", AcademyClassDayOfWeek.TUESDAY, classroomId, "16:00", "17:30");
+        Long classId = createClass(context, "수정 대상", AcademyClassDayOfWeek.THURSDAY, classroomId, "18:00", "19:00");
+
+        mockMvc.perform(put("/api/academies/me/classes/{classId}", classId)
+                        .header("Authorization", "Bearer " + context.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AcademyClassRequest(
+                                "겹치는 수정",
+                                null,
+                                List.of(AcademyClassDayOfWeek.TUESDAY, AcademyClassDayOfWeek.THURSDAY),
+                                classroomId,
+                                null,
+                                LocalTime.parse("17:00"),
+                                LocalTime.parse("18:00"),
+                                "테스트 메모"
+                        ))))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -569,6 +651,7 @@ class AcademyScheduleControllerTest {
         return new AcademyClassRequest(
                 name,
                 dayOfWeek,
+                java.util.List.of(dayOfWeek),
                 classroomId,
                 teacherUserId,
                 LocalTime.parse(startTime),

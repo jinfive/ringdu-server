@@ -123,6 +123,13 @@ public class AcademyTeacherInvitation extends BaseEntity {
         this.respondedAt = respondedAt;
     }
 
+    public void cancel(Long academyUserId, LocalDateTime respondedAt) {
+        validatePending();
+        this.status = AcademyTeacherInvitationStatus.CANCELED;
+        this.respondedByUserId = academyUserId;
+        this.respondedAt = respondedAt;
+    }
+
     public boolean isPending() {
         return status == AcademyTeacherInvitationStatus.PENDING;
     }

@@ -17,7 +17,7 @@ public interface AcademyClassRepository extends JpaRepository<AcademyClass, Long
             select c
             from AcademyClass c
             where c.academyId = :academyId
-              and (:dayOfWeek is null or c.dayOfWeek = :dayOfWeek)
+              and (:dayOfWeek is null or :dayOfWeek member of c.dayOfWeeks or c.dayOfWeek = :dayOfWeek)
               and (:classroomId is null or c.classroomId = :classroomId)
               and (:status is null or c.status = :status)
             order by c.dayOfWeek asc, c.startTime asc, c.id asc
@@ -31,10 +31,18 @@ public interface AcademyClassRepository extends JpaRepository<AcademyClass, Long
 
     Optional<AcademyClass> findByIdAndAcademyId(Long id, Long academyId);
 
-    List<AcademyClass> findAllByTeacherUserIdAndDayOfWeekAndStatusOrderByStartTimeAscIdAsc(
-            Long teacherUserId,
-            AcademyClassDayOfWeek dayOfWeek,
-            ScheduleStatus status
+    @Query("""
+            select c
+            from AcademyClass c
+            where c.teacherUserId = :teacherUserId
+              and (:dayOfWeek member of c.dayOfWeeks or c.dayOfWeek = :dayOfWeek)
+              and c.status = :status
+            order by c.startTime asc, c.id asc
+            """)
+    List<AcademyClass> findTeacherClassesByDay(
+            @Param("teacherUserId") Long teacherUserId,
+            @Param("dayOfWeek") AcademyClassDayOfWeek dayOfWeek,
+            @Param("status") ScheduleStatus status
     );
 
     List<AcademyClass> findAllByTeacherUserIdAndStatusOrderByIdAsc(Long teacherUserId, ScheduleStatus status);
@@ -44,7 +52,7 @@ public interface AcademyClassRepository extends JpaRepository<AcademyClass, Long
             from AcademyClass c
             where c.academyId = :academyId
               and c.classroomId = :classroomId
-              and c.dayOfWeek = :dayOfWeek
+              and (:dayOfWeek member of c.dayOfWeeks or c.dayOfWeek = :dayOfWeek)
               and c.status = com.ringdu.server.academy.schedule.entity.ScheduleStatus.ACTIVE
               and (:excludedClassId is null or c.id <> :excludedClassId)
               and c.startTime < :endTime
